@@ -1,13 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type KeyboardEvent } from 'react'
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   Circle,
   Folder,
+  FolderPlus,
+  Pencil,
   Plus,
   Search,
   Server as ServerIcon,
   Terminal,
+  Trash2,
+  X,
 } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
@@ -22,6 +27,9 @@ interface SidebarProps {
   onSelect: (server: Server) => void
   onAddServer: () => void
   onEditServer: (server: Server) => void
+  onAddGroup: (name: string) => void
+  onRenameGroup: (id: string, name: string) => void
+  onDeleteGroup: (id: string) => void
 }
 
 export function Sidebar({
@@ -31,9 +39,43 @@ export function Sidebar({
   onSelect,
   onAddServer,
   onEditServer,
+  onAddGroup,
+  onRenameGroup,
+  onDeleteGroup,
 }: SidebarProps) {
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+
+  const startEdit = (group: ServerGroup) => {
+    setEditingId(group.id)
+    setEditValue(group.name)
+  }
+
+  const commitEdit = () => {
+    if (editingId) onRenameGroup(editingId, editValue)
+    setEditingId(null)
+    setEditValue('')
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditValue('')
+  }
+
+  const commitAdd = () => {
+    onAddGroup(newName)
+    setNewName('')
+    setAdding(false)
+  }
+
+  const cancelAdd = () => {
+    setNewName('')
+    setAdding(false)
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -75,31 +117,110 @@ export function Sidebar({
         </div>
       </div>
 
+      {/* Groups header */}
+      <div className="flex items-center justify-between px-4 pb-1">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          分组
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          title="新建分组"
+          onClick={() => setAdding(true)}
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
       {/* Groups + servers */}
       <div className="flex-1 overflow-y-auto px-2">
+        {adding && (
+          <div className="mb-1 flex items-center gap-1 px-1">
+            <Folder className="h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e: KeyboardEvent) => {
+                if (e.key === 'Enter') commitAdd()
+                if (e.key === 'Escape') cancelAdd()
+              }}
+              placeholder="分组名称"
+              className="h-7 flex-1 text-sm"
+            />
+            <Button variant="ghost" size="icon-xs" title="确认" onClick={commitAdd}>
+              <Check className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-xs" title="取消" onClick={cancelAdd}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+
         {groups.map((group) => {
           const groupServers = filtered.filter((s) => s.groupId === group.id)
-          if (groupServers.length === 0) return null
+          // Hide empty groups only while actively searching.
+          if (groupServers.length === 0 && query.trim()) return null
           const isCollapsed = collapsed[group.id]
+          const isEditing = editingId === group.id
           return (
-            <div key={group.id} className="mb-1">
-              <button
-                onClick={() => toggle(group.id)}
-                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              >
-                {isCollapsed ? (
-                  <ChevronRight className="h-3.5 w-3.5" />
+            <div key={group.id} className="group/header mb-1">
+              <div className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                {isEditing ? (
+                  <>
+                    <Folder className="h-3.5 w-3.5 shrink-0" />
+                    <Input
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={commitEdit}
+                      onKeyDown={(e: KeyboardEvent) => {
+                        if (e.key === 'Enter') commitEdit()
+                        if (e.key === 'Escape') cancelEdit()
+                      }}
+                      className="h-6 flex-1 text-xs"
+                    />
+                  </>
                 ) : (
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  <>
+                    <button
+                      onClick={() => toggle(group.id)}
+                      className="flex min-w-0 flex-1 items-center gap-1.5"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <Folder className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate uppercase tracking-wide">
+                        {group.name}
+                      </span>
+                    </button>
+                    <div className="ml-auto flex items-center gap-0.5">
+                      <button
+                        title="重命名"
+                        onClick={() => startEdit(group)}
+                        className="hidden rounded p-0.5 hover:text-foreground group-hover/header:block"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      {groups.length > 1 && (
+                        <button
+                          title="删除分组"
+                          onClick={() => onDeleteGroup(group.id)}
+                          className="hidden rounded p-0.5 hover:text-destructive group-hover/header:block"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                      <Badge variant="secondary">{groupServers.length}</Badge>
+                    </div>
+                  </>
                 )}
-                <Folder className="h-3.5 w-3.5" />
-                <span className="uppercase tracking-wide">{group.name}</span>
-                <Badge variant="secondary" className="ml-auto">
-                  {groupServers.length}
-                </Badge>
-              </button>
+              </div>
 
-              {!isCollapsed && (
+              {!isCollapsed && !isEditing && (
                 <div className="mt-0.5 space-y-0.5">
                   {groupServers.map((server) => (
                     <ServerRow
@@ -110,6 +231,11 @@ export function Sidebar({
                       onDoubleClick={() => onEditServer(server)}
                     />
                   ))}
+                  {groupServers.length === 0 && (
+                    <div className="px-2 py-1.5 pl-7 text-xs text-muted-foreground/60">
+                      暂无服务器
+                    </div>
+                  )}
                 </div>
               )}
             </div>

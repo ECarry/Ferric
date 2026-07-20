@@ -67,6 +67,33 @@ function App() {
     setModalOpen(false)
   }
 
+  const addGroup = (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setGroups((prev) => [...prev, { id: `g-${Date.now()}`, name: trimmed }])
+  }
+
+  const renameGroup = (id: string, name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setGroups((prev) =>
+      prev.map((g) => (g.id === id ? { ...g, name: trimmed } : g)),
+    )
+  }
+
+  const deleteGroup = (id: string) => {
+    setGroups((prev) => {
+      if (prev.length <= 1) return prev // keep at least one group
+      const remaining = prev.filter((g) => g.id !== id)
+      const fallback = remaining[0].id
+      // Reassign servers from the removed group to the first remaining one.
+      setServers((servers) =>
+        servers.map((s) => (s.groupId === id ? { ...s, groupId: fallback } : s)),
+      )
+      return remaining
+    })
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar
@@ -76,6 +103,9 @@ function App() {
         onSelect={selectServer}
         onAddServer={openAdd}
         onEditServer={openEdit}
+        onAddGroup={addGroup}
+        onRenameGroup={renameGroup}
+        onDeleteGroup={deleteGroup}
       />
 
       <main className="min-w-0 flex-1">
