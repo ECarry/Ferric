@@ -46,11 +46,16 @@ export function MainPanel({ server, onEdit }: MainPanelProps) {
     setError(null)
   }, [])
 
-  // When the selected server changes, tear down any existing session.
+  // Disconnect only when this panel unmounts (server closed / deleted).
+  // Switching servers no longer tears down the connection because each
+  // server gets its own persistent MainPanel instance.
   useEffect(() => {
-    reset()
+    return () => {
+      if (sessionRef.current) void sshDisconnect(sessionRef.current)
+      if (sftpRef.current) void sftpDisconnect(sftpRef.current)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [server?.id])
+  }, [])
 
   // Reflect backend-initiated disconnects (shell exit, network drop).
   useEffect(() => {

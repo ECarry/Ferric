@@ -3,6 +3,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { MainPanel } from '@/components/MainPanel'
 import { ServerFormModal } from '@/components/ServerFormModal'
 import { loadConfig, saveConfig } from '@/lib/store'
+import { cn } from '@/lib/utils'
 import type { Server, ServerGroup } from '@/types'
 
 function App() {
@@ -10,6 +11,9 @@ function App() {
   const [groups, setGroups] = useState<ServerGroup[]>([])
   const [loaded, setLoaded] = useState(false)
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
+  // Servers that have been opened at least once. Each keeps a persistent,
+  // independently-connected MainPanel so switching tabs never disconnects.
+  const [openIds, setOpenIds] = useState<string[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Server | null>(null)
 
@@ -37,12 +41,19 @@ function App() {
     )
   }, [servers, groups, loaded])
 
-  const activeServer = useMemo(
-    () => servers.find((s) => s.id === activeId),
-    [servers, activeId],
+  // Resolve open ids to live server objects, preserving open order.
+  const openServers = useMemo(
+    () =>
+      openIds
+        .map((id) => servers.find((s) => s.id === id))
+        .filter((s): s is Server => Boolean(s)),
+    [openIds, servers],
   )
 
   const selectServer = (server: Server) => {
+    setOpenIds((prev) =>
+      prev.includes(server.id) ? prev : [...prev, server.id],
+    )
     setActiveId(server.id)
   }
 
@@ -63,6 +74,9 @@ function App() {
         ? prev.map((s) => (s.id === server.id ? server : s))
         : [...prev, server]
     })
+    setOpenIds((prev) =>
+      prev.includes(server.id) ? prev : [...prev, server.id],
+    )
     setActiveId(server.id)
     setModalOpen(false)
   }
@@ -142,7 +156,12 @@ function App() {
 
   const deleteServer = (serverId: string) => {
     setServers((prev) => prev.filter((s) => s.id !== serverId))
-    setActiveId((cur) => (cur === serverId ? undefined : cur))
+    setOpenIds((prev) => {
+      const next = prev.filter((id) => id !== serverId)
+      // If the deleted server was active, fall back to another open tab.
+      setActiveId((cur) => (cur === serverId ? next[next.length - 1] : cur))
+      return next
+    })
   }
 
   return (
@@ -163,11 +182,22 @@ function App() {
         onDeleteServer={deleteServer}
       />
 
-      <main className="min-w-0 flex-1">
-        <MainPanel
-          server={activeServer}
-          onEdit={() => activeServer && openEdit(activeServer)}
-        />
+      <main className="relative min-w-0 flex-1">
+        {openServers.length === 0 ? (
+          <MainPanel server={undefined} onEdit={() => {}} />
+        ) : (
+          openServers.map((s) => (
+            <div
+              key={s.id}
+              className={cn(
+                'absolute inset-0',
+                s.id === activeId ? 'block' : 'hidden',
+              )}
+            >
+              <MainPanel server={s} onEdit={() => openEdit(s)} />
+            </div>
+          ))
+        )}
       </main>
 
       <ServerFormModal
