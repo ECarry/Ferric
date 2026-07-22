@@ -26,19 +26,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. 配置 Node.js 环境
+      # 1. 配置 Node.js 环境，并开启 npm 缓存
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
+          cache: 'npm'
 
-      # 2. 配置 pnpm (如果项目使用 pnpm，可保留；如果使用 npm/yarn 可注释或修改)
-    #   - name: Setup pnpm
-    #     uses: pnpm/action-setup@v3
-    #     with:
-    #       version: 8
-
-      # 3. 配置 Rust 工具链与构建缓存
+      # 2. 配置 Rust 工具链与 Rust 编译缓存
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -49,19 +44,18 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      # 4. 安装 Linux 系统编译依赖 (仅 Ubuntu 执行)
+      # 3. 安装 Linux 系统编译依赖 (仅 Ubuntu 执行)
       - name: Install system dependencies (Ubuntu)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
 
-      # 5. 安装前端依赖
+      # 4. 使用 npm 安装前端依赖
       - name: Install frontend dependencies
-        run: |
-          pnpm install # 如果使用的是 npm，请换成 npm install
+        run: npm ci
 
-      # 6. 调用 Tauri 官方打包并发布脚本
+      # 5. 调用 Tauri 官方打包并发布 Action
       - name: Build and Publish Tauri App
         uses: tauri-apps/tauri-action@v1
         env:
