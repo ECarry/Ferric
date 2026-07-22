@@ -3,7 +3,7 @@ name: "Release App"
 on:
   push:
     tags:
-      - 'v*' # 当推送形如 v1.0.0 的 Git Tag 时触发打包
+      - 'v*'
 
 jobs:
   publish-tauri:
@@ -13,11 +13,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest' # Apple Silicon (M1/M2/M3/M4)
+          # 1. macOS - Apple Silicon (M1/M2/M3/M4)
+          - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
-          - platform: 'ubuntu-22.04' # Linux
+
+          # 2. macOS - Intel CPU (x86_64)
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+
+          # 3. Linux
+          - platform: 'ubuntu-22.04'
             args: ''
-          - platform: 'windows-latest' # Windows
+
+          # 4. Windows
+          - platform: 'windows-latest'
             args: ''
 
     runs-on: ${{ matrix.platform }}
@@ -26,44 +35,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. 配置 Node.js 环境，并开启 npm 缓存
+      # 1. 配置 Node.js 环境及 npm 缓存
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: 'npm'
 
-      # 2. 配置 Rust 工具链与 Rust 编译缓存
+      # 2. 配置 Rust 工具链
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      # 3. Rust 编译缓存
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
-      # 3. 安装 Linux 系统编译依赖 (仅 Ubuntu 执行)
+      # 4. 安装 Linux 系统编译依赖 (仅 Ubuntu 必备)
       - name: Install system dependencies (Ubuntu)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
 
-      # 4. 使用 npm 安装前端依赖
+      # 5. 安装前端依赖
       - name: Install frontend dependencies
         run: npm ci
 
-      # 5. 调用 Tauri 官方打包并发布 Action
+      # 6. 使用适配 Tauri v2 的 tauri-action
       - name: Build and Publish Tauri App
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0.5 # 👈 这里切换到了适配 v2 的 Action
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__ # 自动提取 package.json 或 tauri.conf.json 中的 version
-          releaseName: 'Ferric v__VERSION__'
+          tagName: v__VERSION__
+          releaseName: 'Ferric SSH v__VERSION__'
           releaseBody: 'See the assets below to download.'
-          releaseDraft: true # 设置为 true 会先生成 Release 草稿，确认无误后可在 GitHub 上手动点 Publish
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
