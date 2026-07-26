@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,12 +26,13 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   destructive = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useI18n()
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent className="sm:max-w-sm">
@@ -42,14 +44,14 @@ export function ConfirmDialog({
         </DialogHeader>
         <DialogFooter className="mt-2">
           <Button type="button" variant="outline" onClick={onCancel}>
-            {cancelText}
+            {cancelText ?? t('cancel')}
           </Button>
           <Button
             type="button"
             variant={destructive ? 'destructive' : 'default'}
             onClick={onConfirm}
           >
-            {confirmText}
+            {confirmText ?? t('confirm')}
           </Button>
         </DialogFooter>
       </DialogContent>

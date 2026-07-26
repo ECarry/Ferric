@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
+import { groupDisplayName } from '@/lib/groups'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -98,7 +99,7 @@ export function Sidebar({
 
   const startEdit = (group: ServerGroup) => {
     setEditingId(group.id)
-    setEditValue(group.name)
+    setEditValue(groupDisplayName(group, t))
   }
 
   const commitEdit = () => {
@@ -206,7 +207,9 @@ export function Sidebar({
             <div className="text-xs text-muted-foreground">Rust · Tauri Client</div>
           </div>
           <Select value={language} onValueChange={(value) => setLanguage(value as 'en' | 'zh-CN')}>
-            <SelectTrigger size="sm" className="h-7 w-18 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger size="sm" className="h-7 w-20 text-xs" aria-label={t('language')}>
+              <SelectValue>{(value) => (value === 'zh-CN' ? '中文' : 'EN')}</SelectValue>
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="en" className='text-xs'>EN</SelectItem>
               <SelectItem value="zh-CN" className='text-xs'>中文</SelectItem>
@@ -342,7 +345,7 @@ export function Sidebar({
                       )}
                       <Folder className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate uppercase tracking-wide">
-                        {group.name}
+                        {groupDisplayName(group, t)}
                       </span>
                     </button>
                     <div className="ml-auto flex items-center gap-0.5">
@@ -360,7 +363,7 @@ export function Sidebar({
                             setConfirm({
                               kind: 'group',
                               id: group.id,
-                              name: group.name,
+                              name: groupDisplayName(group, t),
                             })
                           }
                           className="hidden rounded p-0.5 hover:text-destructive group-hover/header:block"
