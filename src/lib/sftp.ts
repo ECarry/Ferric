@@ -83,6 +83,11 @@ export function sftpUpload(
   return invoke('sftp_upload', { id, localPath, remotePath })
 }
 
+/** Cancel an in-flight upload/download for the given session. */
+export function sftpCancel(id: string): Promise<void> {
+  return invoke('sftp_cancel', { id })
+}
+
 /** Create a remote directory. */
 export function sftpMkdir(id: string, path: string): Promise<void> {
   return invoke('sftp_mkdir', { id, path })

@@ -9,6 +9,7 @@ import {
   Loader2,
   RefreshCw,
   Upload,
+  X,
 } from 'lucide-react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import type { RemoteFile } from '@/types'
@@ -18,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import {
   onDownloadProgress,
   onUploadProgress,
+  sftpCancel,
   sftpDownload,
   sftpDownloadDir,
   sftpHome,
@@ -60,7 +62,17 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     transferred: number
     total: number
   } | null>(null)
+  const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const onCancel = async () => {
+    setCancelling(true)
+    try {
+      await sftpCancel(sessionId)
+    } catch (e) {
+      console.error('取消传输失败', e)
+    }
+  }
 
   const loadDir = useCallback(
     async (target: string) => {
@@ -102,6 +114,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     if (typeof picked !== 'string') return
     setBusy(t('uploading'))
     setError(null)
+    setCancelling(false)
     setProgress({ transferred: 0, total: 0 })
     const unlisten = await onUploadProgress((p) => {
       if (p.id === sessionId)
@@ -116,6 +129,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       unlisten()
       setBusy(null)
       setProgress(null)
+      setCancelling(false)
     }
   }
 
@@ -132,6 +146,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
 
     setBusy(isDir ? t('downloadingFolder') : t('downloading'))
     setError(null)
+    setCancelling(false)
     setProgress({ transferred: 0, total: isDir ? 0 : selectedFile.size })
     const unlisten = await onDownloadProgress((p) => {
       if (p.id === sessionId)
@@ -149,6 +164,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       unlisten()
       setBusy(null)
       setProgress(null)
+      setCancelling(false)
     }
   }
 
@@ -289,7 +305,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         {busy ? (
           <div className="flex flex-1 items-center gap-2">
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-            <span className="shrink-0">{busy}</span>
+            <span className="shrink-0">{cancelling ? t('cancelling') : busy}</span>
             {progress && progress.total > 0 ? (
               <>
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -310,6 +326,16 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
                 {formatSize(progress.transferred)}
               </span>
             ) : null}
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="ml-auto shrink-0"
+              title={t('cancelTransfer')}
+              disabled={cancelling}
+              onClick={onCancel}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
           </div>
         ) : selected ? (
           <span>

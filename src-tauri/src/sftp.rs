@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Local};
@@ -21,6 +22,20 @@ struct SftpConn {
 #[derive(Default)]
 pub struct SftpManager {
     sessions: Mutex<HashMap<String, SftpConn>>,
+    /// Per-session cancellation flags for in-flight transfers.
+    cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+/// Reset and return the cancellation flag for a session, called at the start
+/// of every transfer so a stale cancel doesn't abort the next one.
+fn begin_transfer(state: &State<'_, SftpManager>, id: &str) -> Result<Arc<AtomicBool>, String> {
+    let mut cancels = state.cancels.lock().map_err(|e| e.to_string())?;
+    let flag = cancels
+        .entry(id.to_string())
+        .or_insert_with(|| Arc::new(AtomicBool::new(false)))
+        .clone();
+    flag.store(false, Ordering::SeqCst);
+    Ok(flag)
 }
 
 /// A directory entry returned to the frontend (mirrors the `RemoteFile` type).
@@ -169,6 +184,7 @@ pub async fn sftp_download(
     local_path: String,
 ) -> Result<(), String> {
     let sftp = session_for(&state, &id)?;
+    let cancel = begin_transfer(&state, &id)?;
     // Best-effort total size for the progress bar; 0 means unknown.
     let total = sftp
         .metadata(&remote_path)
@@ -195,8 +211,13 @@ pub async fn sftp_download(
     let mut buf = vec![0u8; 64 * 1024];
     let mut transferred: u64 = 0;
     let mut last_emit = std::time::Instant::now();
+    let mut cancelled = false;
     emit(0);
     loop {
+        if cancel.load(Ordering::SeqCst) {
+            cancelled = true;
+            break;
+        }
         let n = remote.read(&mut buf).await.map_err(|e| e.to_string())?;
         if n == 0 {
             break;
@@ -211,6 +232,12 @@ pub async fn sftp_download(
             last_emit = std::time::Instant::now();
             emit(transferred);
         }
+    }
+    if cancelled {
+        // Discard the partially written file.
+        drop(local);
+        let _ = tokio::fs::remove_file(&local_path).await;
+        return Ok(());
     }
     local.flush().await.map_err(|e| e.to_string())?;
     emit(transferred);
@@ -232,6 +259,7 @@ pub async fn sftp_download_dir(
     use std::path::PathBuf;
 
     let sftp = session_for(&state, &id)?;
+    let cancel = begin_transfer(&state, &id)?;
 
     // Recreate the remote folder as a subdirectory of the chosen local parent.
     let folder_name = remote_path
@@ -290,13 +318,18 @@ pub async fn sftp_download_dir(
     let mut buf = vec![0u8; 64 * 1024];
     let mut transferred: u64 = 0;
     let mut last_emit = std::time::Instant::now();
+    let mut cancelled = false;
     emit(0);
-    for (rpath, lpath) in files {
+    'files: for (rpath, lpath) in files {
         let mut remote = sftp.open(rpath).await.map_err(|e| e.to_string())?;
         let mut local = tokio::fs::File::create(&lpath)
             .await
             .map_err(|e| e.to_string())?;
         loop {
+            if cancel.load(Ordering::SeqCst) {
+                cancelled = true;
+                break 'files;
+            }
             let n = remote.read(&mut buf).await.map_err(|e| e.to_string())?;
             if n == 0 {
                 break;
@@ -313,6 +346,11 @@ pub async fn sftp_download_dir(
         }
         local.flush().await.map_err(|e| e.to_string())?;
     }
+    if cancelled {
+        // Remove the partially downloaded folder tree.
+        let _ = tokio::fs::remove_dir_all(&root).await;
+        return Ok(());
+    }
     emit(transferred);
     Ok(())
 }
@@ -328,6 +366,7 @@ pub async fn sftp_upload(
     remote_path: String,
 ) -> Result<(), String> {
     let sftp = session_for(&state, &id)?;
+    let cancel = begin_transfer(&state, &id)?;
     let total = tokio::fs::metadata(&local_path)
         .await
         .map(|m| m.len())
@@ -351,8 +390,13 @@ pub async fn sftp_upload(
     let mut buf = vec![0u8; 64 * 1024];
     let mut transferred: u64 = 0;
     let mut last_emit = std::time::Instant::now();
+    let mut cancelled = false;
     emit(0);
     loop {
+        if cancel.load(Ordering::SeqCst) {
+            cancelled = true;
+            break;
+        }
         let n = local.read(&mut buf).await.map_err(|e| e.to_string())?;
         if n == 0 {
             break;
@@ -367,9 +411,25 @@ pub async fn sftp_upload(
             emit(transferred);
         }
     }
+    if cancelled {
+        // Close the stream and remove the partially uploaded remote file.
+        let _ = remote.shutdown().await;
+        let _ = sftp.remove_file(&remote_path).await;
+        return Ok(());
+    }
     remote.flush().await.map_err(|e| e.to_string())?;
     remote.shutdown().await.map_err(|e| e.to_string())?;
     emit(transferred);
+    Ok(())
+}
+
+/// Cancel an in-flight transfer (upload/download) for the given session.
+#[tauri::command]
+pub fn sftp_cancel(state: State<'_, SftpManager>, id: String) -> Result<(), String> {
+    let cancels = state.cancels.lock().map_err(|e| e.to_string())?;
+    if let Some(flag) = cancels.get(&id) {
+        flag.store(true, Ordering::SeqCst);
+    }
     Ok(())
 }
 
@@ -415,6 +475,9 @@ pub async fn sftp_rename(
 /// Close an SFTP session and drop its SSH connection.
 #[tauri::command]
 pub async fn sftp_disconnect(state: State<'_, SftpManager>, id: String) -> Result<(), String> {
+    if let Ok(mut cancels) = state.cancels.lock() {
+        cancels.remove(&id);
+    }
     let conn = state.sessions.lock().map_err(|e| e.to_string())?.remove(&id);
     if let Some(conn) = conn {
         let _ = conn.sftp.close().await;
