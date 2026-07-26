@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Ferric SSH",
-  "version": "0.1.0",
-  "identifier": "com.ferric.ssh",
+  "productName": "Ferric",
+  "version": "0.1.1",
+  "identifier": "com.ferric.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Ferric SSH",
+        "title": "Ferric",
         "width": 1200,
         "height": 780,
         "minWidth": 900,
@@ -36,6 +36,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "entitlements": "./Entitlements.plist",
+      "infoPlist": "./Info.plist",
+      "signingIdentity": "-"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

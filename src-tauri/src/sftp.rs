@@ -217,6 +217,106 @@ pub async fn sftp_download(
     Ok(())
 }
 
+/// Recursively download a remote directory into `local_path` (the local parent
+/// directory). The remote folder is recreated as a subdirectory named after its
+/// basename. Emits the same `sftp:download-progress` events as file downloads,
+/// with `transferred`/`total` aggregated across every file in the tree.
+#[tauri::command]
+pub async fn sftp_download_dir(
+    app: AppHandle,
+    state: State<'_, SftpManager>,
+    id: String,
+    remote_path: String,
+    local_path: String,
+) -> Result<(), String> {
+    use std::path::PathBuf;
+
+    let sftp = session_for(&state, &id)?;
+
+    // Recreate the remote folder as a subdirectory of the chosen local parent.
+    let folder_name = remote_path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("download");
+    let root = PathBuf::from(&local_path).join(folder_name);
+
+    // Walk the tree iteratively: collect dirs to create, files to download,
+    // and the total byte count for the progress bar.
+    let mut dirs: Vec<PathBuf> = vec![root.clone()];
+    let mut files: Vec<(String, PathBuf)> = Vec::new();
+    let mut total: u64 = 0;
+    let mut stack: Vec<(String, PathBuf)> = vec![(remote_path.clone(), root.clone())];
+
+    while let Some((rdir, ldir)) = stack.pop() {
+        let entries = sftp.read_dir(rdir.clone()).await.map_err(|e| e.to_string())?;
+        for entry in entries {
+            let name = entry.file_name();
+            let rpath = if rdir.ends_with('/') {
+                format!("{rdir}{name}")
+            } else {
+                format!("{rdir}/{name}")
+            };
+            let lpath = ldir.join(&name);
+            if entry.file_type().is_dir() {
+                dirs.push(lpath.clone());
+                stack.push((rpath, lpath));
+            } else {
+                total += entry.metadata().size.unwrap_or(0);
+                files.push((rpath, lpath));
+            }
+        }
+    }
+
+    // Create the directory skeleton first (preserves empty directories too).
+    for dir in &dirs {
+        tokio::fs::create_dir_all(dir)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let emit = |transferred: u64| {
+        let _ = app.emit(
+            "sftp:download-progress",
+            TransferProgress {
+                id: id.clone(),
+                transferred,
+                total,
+            },
+        );
+    };
+
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut transferred: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    emit(0);
+    for (rpath, lpath) in files {
+        let mut remote = sftp.open(rpath).await.map_err(|e| e.to_string())?;
+        let mut local = tokio::fs::File::create(&lpath)
+            .await
+            .map_err(|e| e.to_string())?;
+        loop {
+            let n = remote.read(&mut buf).await.map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            local
+                .write_all(&buf[..n])
+                .await
+                .map_err(|e| e.to_string())?;
+            transferred += n as u64;
+            if last_emit.elapsed().as_millis() >= 100 {
+                last_emit = std::time::Instant::now();
+                emit(transferred);
+            }
+        }
+        local.flush().await.map_err(|e| e.to_string())?;
+    }
+    emit(transferred);
+    Ok(())
+}
+
 /// Upload a local file to a remote path, emitting `sftp:upload-progress`
 /// events (throttled) so the frontend can render a progress bar.
 #[tauri::command]

@@ -1,6 +1,7 @@
 mod sftp;
 mod ssh;
 mod store;
+mod docker;
 
 use sftp::SftpManager;
 use ssh::SshManager;
@@ -33,11 +34,17 @@ pub fn run() {
       sftp::sftp_home,
       sftp::sftp_list,
       sftp::sftp_download,
+      sftp::sftp_download_dir,
       sftp::sftp_upload,
       sftp::sftp_mkdir,
       sftp::sftp_remove,
       sftp::sftp_rename,
       sftp::sftp_disconnect,
+      docker::get_remote_docker_version,
+      docker::list_remote_containers,
+      docker::control_remote_container,
+      docker::create_remote_container,
+      docker::rename_remote_container,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

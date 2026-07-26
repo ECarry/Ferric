@@ -58,6 +58,22 @@ export function sftpDownload(
   return invoke('sftp_download', { id, remotePath, localPath })
 }
 
+/**
+ * Recursively download a remote directory into `localParentDir`. The remote
+ * folder is recreated as a subdirectory named after its basename.
+ */
+export function sftpDownloadDir(
+  id: string,
+  remotePath: string,
+  localParentDir: string,
+): Promise<void> {
+  return invoke('sftp_download_dir', {
+    id,
+    remotePath,
+    localPath: localParentDir,
+  })
+}
+
 /** Upload a local file to a remote path. */
 export function sftpUpload(
   id: string,

@@ -49,8 +49,12 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       void sshSendInput(sessionId, data)
     })
 
-    // Keep the PTY size in sync with the visible terminal
+    // Keep the PTY size in sync with the visible terminal.
+    // Skip while hidden (display:none => 0 size); otherwise fit() would
+    // compute a degenerate column count and force the shell to redraw its
+    // prompt, which shows up as an extra line each time you switch tabs.
     const syncSize = () => {
+      if (!container.clientWidth || !container.clientHeight) return
       fit.fit()
       void sshResize(sessionId, term.cols, term.rows)
     }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 /// Keychain service under which per-server passwords are stored.
-const KEYCHAIN_SERVICE: &str = "com.ferric.ssh";
+const KEYCHAIN_SERVICE: &str = "com.ferric.app";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,15 +51,15 @@ impl Default for Config {
             groups: vec![
                 Group {
                     id: "g-prod".into(),
-                    name: "生产环境".into(),
+                    name: "Production".into(),
                 },
                 Group {
                     id: "g-staging".into(),
-                    name: "测试环境".into(),
+                    name: "Staging".into(),
                 },
                 Group {
                     id: "g-personal".into(),
-                    name: "个人服务器".into(),
+                    name: "Personal".into(),
                 },
             ],
         }

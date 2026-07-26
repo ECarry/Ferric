@@ -1,15 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Sidebar } from '@/components/Sidebar'
 import { MainPanel } from '@/components/MainPanel'
 import { ServerFormModal } from '@/components/ServerFormModal'
 import { deleteServerSecret, loadConfig, saveConfig } from '@/lib/store'
-import type { Server, ServerGroup } from '@/types'
+import { cn } from '@/lib/utils'
+import type { ConnectionStatus, Server, ServerGroup } from '@/types'
 
 function App() {
   const [servers, setServers] = useState<Server[]>([])
   const [groups, setGroups] = useState<ServerGroup[]>([])
   const [loaded, setLoaded] = useState(false)
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
+  // Servers that have been opened at least once. Each keeps a persistent,
+  // independently-connected MainPanel so switching tabs never disconnects.
+  const [openIds, setOpenIds] = useState<string[]>([])
+  // Live connection status per server, reported by each MainPanel.
+  const [statuses, setStatuses] = useState<Record<string, ConnectionStatus>>(
+    {},
+  )
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Server | null>(null)
 
@@ -37,12 +45,36 @@ function App() {
     )
   }, [servers, groups, loaded])
 
-  const activeServer = useMemo(
-    () => servers.find((s) => s.id === activeId),
-    [servers, activeId],
+  const handleStatusChange = useCallback(
+    (id: string, status: ConnectionStatus) => {
+      setStatuses((prev) => (prev[id] === status ? prev : { ...prev, [id]: status }))
+    },
+    [],
+  )
+
+  const connectedIds = useMemo(
+    () =>
+      new Set(
+        Object.entries(statuses)
+          .filter(([, s]) => s === 'connected')
+          .map(([id]) => id),
+      ),
+    [statuses],
+  )
+
+  // Resolve open ids to live server objects, preserving open order.
+  const openServers = useMemo(
+    () =>
+      openIds
+        .map((id) => servers.find((s) => s.id === id))
+        .filter((s): s is Server => Boolean(s)),
+    [openIds, servers],
   )
 
   const selectServer = (server: Server) => {
+    setOpenIds((prev) =>
+      prev.includes(server.id) ? prev : [...prev, server.id],
+    )
     setActiveId(server.id)
   }
 
@@ -63,6 +95,9 @@ function App() {
         ? prev.map((s) => (s.id === server.id ? server : s))
         : [...prev, server]
     })
+    setOpenIds((prev) =>
+      prev.includes(server.id) ? prev : [...prev, server.id],
+    )
     setActiveId(server.id)
     setModalOpen(false)
   }
@@ -142,7 +177,12 @@ function App() {
 
   const deleteServer = (serverId: string) => {
     setServers((prev) => prev.filter((s) => s.id !== serverId))
-    setActiveId((cur) => (cur === serverId ? undefined : cur))
+    setOpenIds((prev) => {
+      const next = prev.filter((id) => id !== serverId)
+      // If the deleted server was active, fall back to another open tab.
+      setActiveId((cur) => (cur === serverId ? next[next.length - 1] : cur))
+      return next
+    })
     // Clean up any stored password/passphrase from the OS keychain.
     void deleteServerSecret(serverId).catch((e) =>
       console.error('删除凭据失败', e),
@@ -155,6 +195,7 @@ function App() {
         groups={groups}
         servers={servers}
         activeServerId={activeId}
+        connectedIds={connectedIds}
         onSelect={selectServer}
         onAddServer={openAdd}
         onEditServer={openEdit}
@@ -167,11 +208,26 @@ function App() {
         onDeleteServer={deleteServer}
       />
 
-      <main className="min-w-0 flex-1">
-        <MainPanel
-          server={activeServer}
-          onEdit={() => activeServer && openEdit(activeServer)}
-        />
+      <main className="relative min-w-0 flex-1">
+        {openServers.length === 0 ? (
+          <MainPanel server={undefined} onEdit={() => {}} />
+        ) : (
+          openServers.map((s) => (
+            <div
+              key={s.id}
+              className={cn(
+                'absolute inset-0',
+                s.id === activeId ? 'block' : 'hidden',
+              )}
+            >
+              <MainPanel
+                server={s}
+                onEdit={() => openEdit(s)}
+                onStatusChange={handleStatusChange}
+              />
+            </div>
+          ))
+        )}
       </main>
 
       <ServerFormModal

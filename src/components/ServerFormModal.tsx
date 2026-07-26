@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { KeyRound, Lock } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -45,6 +46,7 @@ export function ServerFormModal({
   onClose,
   onSave,
 }: ServerFormModalProps) {
+  const { t } = useI18n()
   const [form, setForm] = useState<Server>(emptyForm(groups[0]?.id ?? ''))
 
   useEffect(() => {
@@ -65,12 +67,12 @@ export function ServerFormModal({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{initial ? '编辑服务器' : '添加服务器'}</DialogTitle>
+          <DialogTitle>{initial ? t('editServer') : t('addServerTitle')}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="名称">
+            <Field label={t('name')}>
               <Input
                 required
                 value={form.name}
@@ -78,13 +80,13 @@ export function ServerFormModal({
                 placeholder="web-01"
               />
             </Field>
-            <Field label="分组">
+            <Field label={t('group')}>
               <Select
                 value={form.groupId}
                 onValueChange={(v) => set('groupId', v as string)}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择分组" />
+                  <SelectValue placeholder={t('selectGroup')} />
                 </SelectTrigger>
                 <SelectContent>
                   {groups.map((g) => (
@@ -99,7 +101,7 @@ export function ServerFormModal({
 
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2">
-              <Field label="主机 / IP">
+              <Field label={t('host')}>
                 <Input
                   required
                   value={form.host}
@@ -108,7 +110,7 @@ export function ServerFormModal({
                 />
               </Field>
             </div>
-            <Field label="端口">
+            <Field label={t('port')}>
               <Input
                 type="number"
                 value={form.port}
@@ -117,7 +119,7 @@ export function ServerFormModal({
             </Field>
           </div>
 
-          <Field label="用户名">
+          <Field label={t('username')}>
             <Input
               required
               value={form.username}
@@ -126,25 +128,25 @@ export function ServerFormModal({
             />
           </Field>
 
-          <Field label="认证方式">
+          <Field label={t('authentication')}>
             <div className="flex gap-2">
               <AuthTab
                 active={form.authType === 'password'}
                 onClick={() => set('authType', 'password')}
                 icon={<Lock className="h-4 w-4" />}
-                label="密码"
+                label={t('password')}
               />
               <AuthTab
                 active={form.authType === 'key'}
                 onClick={() => set('authType', 'key')}
                 icon={<KeyRound className="h-4 w-4" />}
-                label="密钥"
+                label={t('key')}
               />
             </div>
           </Field>
 
           {form.authType === 'password' ? (
-            <Field label="密码">
+            <Field label={t('password')}>
               <Input
                 type="password"
                 value={form.password ?? ''}
@@ -154,19 +156,19 @@ export function ServerFormModal({
             </Field>
           ) : (
             <div className="space-y-4">
-              <Field label="私钥路径">
+              <Field label={t('privateKeyPath')}>
                 <Input
                   value={form.keyPath ?? ''}
                   onChange={(e) => set('keyPath', e.target.value)}
                   placeholder="~/.ssh/id_ed25519"
                 />
               </Field>
-              <Field label="私钥口令（可选）">
+              <Field label={t('privateKeyPassphrase')}>
                 <Input
                   type="password"
                   value={form.keyPassphrase ?? ''}
                   onChange={(e) => set('keyPassphrase', e.target.value)}
-                  placeholder="若私钥未加密可留空"
+                  placeholder={t('privateKeyPassphrasePlaceholder')}
                 />
               </Field>
             </div>
@@ -174,9 +176,9 @@ export function ServerFormModal({
 
           <DialogFooter className="mt-2">
             <Button type="button" variant="outline" onClick={onClose}>
-              取消
+              {t('cancel')}
             </Button>
-            <Button type="submit">保存</Button>
+            <Button type="submit">{t('save')}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
