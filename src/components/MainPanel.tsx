@@ -77,6 +77,7 @@ export function MainPanel({ server, onEdit }: MainPanelProps) {
       authType: server.authType,
       password: server.password,
       keyPath: server.keyPath,
+      keyPassphrase: server.keyPassphrase,
       cols: 80,
       rows: 24,
     }
@@ -93,6 +94,7 @@ export function MainPanel({ server, onEdit }: MainPanelProps) {
         authType: server.authType,
         password: server.password,
         keyPath: server.keyPath,
+        keyPassphrase: server.keyPassphrase,
       })
         .then((sid) => {
           sftpRef.current = sid

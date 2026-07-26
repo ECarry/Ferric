@@ -71,38 +71,51 @@ impl client::Handler for Client {
 /// Shared by the interactive shell and the SFTP subsystem.
 pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Handle<Client>> {
     let config = Arc::new(client::Config::default());
-    let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), Client).await?;
+    let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), Client)
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "无法连接到 {}:{}（请检查主机地址、端口与网络连接）：{}",
+                cfg.host,
+                cfg.port,
+                e
+            )
+        })?;
 
     let authenticated = match cfg.auth_type.as_str() {
         "key" => {
             let path = cfg
                 .key_path
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("missing key_path"))?;
-            let key_pair = load_secret_key(path, cfg.key_passphrase.as_deref())?;
+                .ok_or_else(|| anyhow::anyhow!("未提供私钥路径"))?;
+            let key_pair = load_secret_key(path, cfg.key_passphrase.as_deref()).map_err(|e| {
+                anyhow::anyhow!("私钥加载失败（文件不存在、格式不支持或口令不正确）：{}", e)
+            })?;
             let hash = session.best_supported_rsa_hash().await?.flatten();
             session
                 .authenticate_publickey(
                     &cfg.username,
                     PrivateKeyWithHashAlg::new(Arc::new(key_pair), hash),
                 )
-                .await?
+                .await
+                .map_err(|e| anyhow::anyhow!("认证过程出错：{}", e))?
                 .success()
         }
         _ => {
             let password = cfg
                 .password
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("missing password"))?;
+                .ok_or_else(|| anyhow::anyhow!("未提供密码"))?;
             session
                 .authenticate_password(&cfg.username, password)
-                .await?
+                .await
+                .map_err(|e| anyhow::anyhow!("认证过程出错：{}", e))?
                 .success()
         }
     };
 
     if !authenticated {
-        anyhow::bail!("authentication failed");
+        anyhow::bail!("认证失败：用户名、密码或密钥不正确");
     }
 
     Ok(session)

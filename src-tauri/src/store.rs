@@ -21,6 +21,8 @@ pub struct Server {
     pub password: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_passphrase: Option<String>,
     pub group_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
@@ -73,23 +75,28 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("config.json"))
 }
 
-/// Read a stored password for a server from the OS keychain, if present.
-fn read_password(server_id: &str) -> Option<String> {
-    keyring::Entry::new(KEYCHAIN_SERVICE, server_id)
+/// Keychain account under which a server's private-key passphrase is stored.
+fn passphrase_account(server_id: &str) -> String {
+    format!("{server_id}:passphrase")
+}
+
+/// Read a stored secret (password or passphrase) from the OS keychain.
+fn read_secret(account: &str) -> Option<String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, account)
         .ok()
         .and_then(|entry| entry.get_password().ok())
 }
 
-/// Store a password for a server in the OS keychain.
-fn write_password(server_id: &str, password: &str) -> Result<(), String> {
-    keyring::Entry::new(KEYCHAIN_SERVICE, server_id)
-        .and_then(|entry| entry.set_password(password))
+/// Store a secret in the OS keychain.
+fn write_secret(account: &str, secret: &str) -> Result<(), String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, account)
+        .and_then(|entry| entry.set_password(secret))
         .map_err(|e| format!("无法写入密钥链: {e}"))
 }
 
-/// Remove a server's password from the keychain (ignores "not found").
-fn delete_password(server_id: &str) {
-    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, server_id) {
+/// Remove a secret from the keychain (ignores "not found").
+fn delete_secret(account: &str) {
+    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, account) {
         let _ = entry.delete_credential();
     }
 }
@@ -107,7 +114,9 @@ pub fn load_config(app: AppHandle) -> Result<Config, String> {
 
     for server in config.servers.iter_mut() {
         if server.auth_type == "password" {
-            server.password = read_password(&server.id);
+            server.password = read_secret(&server.id);
+        } else if server.auth_type == "key" {
+            server.key_passphrase = read_secret(&passphrase_account(&server.id));
         }
     }
 
@@ -123,9 +132,15 @@ pub fn save_config(app: AppHandle, config: Config) -> Result<(), String> {
 
     for server in to_write.servers.iter_mut() {
         match server.password.take() {
-            Some(pw) if !pw.is_empty() => write_password(&server.id, &pw)?,
+            Some(pw) if !pw.is_empty() => write_secret(&server.id, &pw)?,
             // Empty/absent password on save leaves any existing keychain entry
             // untouched so editing other fields doesn't wipe the secret.
+            _ => {}
+        }
+        match server.key_passphrase.take() {
+            Some(pp) if !pp.is_empty() => {
+                write_secret(&passphrase_account(&server.id), &pp)?
+            }
             _ => {}
         }
     }
@@ -136,9 +151,10 @@ pub fn save_config(app: AppHandle, config: Config) -> Result<(), String> {
     Ok(())
 }
 
-/// Delete a server's stored password from the keychain.
+/// Delete a server's stored password and passphrase from the keychain.
 #[tauri::command]
 pub fn delete_server_secret(server_id: String) -> Result<(), String> {
-    delete_password(&server_id);
+    delete_secret(&server_id);
+    delete_secret(&passphrase_account(&server_id));
     Ok(())
 }

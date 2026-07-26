@@ -153,13 +153,23 @@ export function ServerFormModal({
               />
             </Field>
           ) : (
-            <Field label="私钥路径">
-              <Input
-                value={form.keyPath ?? ''}
-                onChange={(e) => set('keyPath', e.target.value)}
-                placeholder="~/.ssh/id_ed25519"
-              />
-            </Field>
+            <div className="space-y-4">
+              <Field label="私钥路径">
+                <Input
+                  value={form.keyPath ?? ''}
+                  onChange={(e) => set('keyPath', e.target.value)}
+                  placeholder="~/.ssh/id_ed25519"
+                />
+              </Field>
+              <Field label="私钥口令（可选）">
+                <Input
+                  type="password"
+                  value={form.keyPassphrase ?? ''}
+                  onChange={(e) => set('keyPassphrase', e.target.value)}
+                  placeholder="若私钥未加密可留空"
+                />
+              </Field>
+            </div>
           )}
 
           <DialogFooter className="mt-2">

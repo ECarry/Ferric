@@ -149,10 +149,10 @@ pub async fn sftp_list(
     Ok(files)
 }
 
-/// Progress payload emitted during a download, keyed by SFTP session id.
+/// Progress payload emitted during a transfer, keyed by SFTP session id.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct DownloadProgress {
+struct TransferProgress {
     id: String,
     transferred: u64,
     total: u64,
@@ -184,7 +184,7 @@ pub async fn sftp_download(
     let emit = |transferred: u64| {
         let _ = app.emit(
             "sftp:download-progress",
-            DownloadProgress {
+            TransferProgress {
                 id: id.clone(),
                 transferred,
                 total,
@@ -217,24 +217,59 @@ pub async fn sftp_download(
     Ok(())
 }
 
-/// Upload a local file to a remote path.
+/// Upload a local file to a remote path, emitting `sftp:upload-progress`
+/// events (throttled) so the frontend can render a progress bar.
 #[tauri::command]
 pub async fn sftp_upload(
+    app: AppHandle,
     state: State<'_, SftpManager>,
     id: String,
     local_path: String,
     remote_path: String,
 ) -> Result<(), String> {
     let sftp = session_for(&state, &id)?;
+    let total = tokio::fs::metadata(&local_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
     let mut local = tokio::fs::File::open(&local_path)
         .await
         .map_err(|e| e.to_string())?;
-    let mut remote = sftp.create(remote_path).await.map_err(|e| e.to_string())?;
-    tokio::io::copy(&mut local, &mut remote)
-        .await
-        .map_err(|e| e.to_string())?;
+    let mut remote = sftp.create(&remote_path).await.map_err(|e| e.to_string())?;
+
+    let emit = |transferred: u64| {
+        let _ = app.emit(
+            "sftp:upload-progress",
+            TransferProgress {
+                id: id.clone(),
+                transferred,
+                total,
+            },
+        );
+    };
+
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut transferred: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    emit(0);
+    loop {
+        let n = local.read(&mut buf).await.map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        remote
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| e.to_string())?;
+        transferred += n as u64;
+        if last_emit.elapsed().as_millis() >= 100 {
+            last_emit = std::time::Instant::now();
+            emit(transferred);
+        }
+    }
     remote.flush().await.map_err(|e| e.to_string())?;
     remote.shutdown().await.map_err(|e| e.to_string())?;
+    emit(transferred);
     Ok(())
 }
 

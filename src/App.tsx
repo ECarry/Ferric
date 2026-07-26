@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Sidebar } from '@/components/Sidebar'
 import { MainPanel } from '@/components/MainPanel'
 import { ServerFormModal } from '@/components/ServerFormModal'
-import { loadConfig, saveConfig } from '@/lib/store'
+import { deleteServerSecret, loadConfig, saveConfig } from '@/lib/store'
 import type { Server, ServerGroup } from '@/types'
 
 function App() {
@@ -143,6 +143,10 @@ function App() {
   const deleteServer = (serverId: string) => {
     setServers((prev) => prev.filter((s) => s.id !== serverId))
     setActiveId((cur) => (cur === serverId ? undefined : cur))
+    // Clean up any stored password/passphrase from the OS keychain.
+    void deleteServerSecret(serverId).catch((e) =>
+      console.error('删除凭据失败', e),
+    )
   }
 
   return (

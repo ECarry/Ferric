@@ -10,6 +10,8 @@ export interface Server {
   /** Only for UI mock — never store plaintext in a real app */
   password?: string
   keyPath?: string
+  /** Optional passphrase protecting the private key. */
+  keyPassphrase?: string
   groupId: string
   color?: string
   lastConnected?: string

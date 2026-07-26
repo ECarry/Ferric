@@ -31,6 +31,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 interface SidebarProps {
   groups: ServerGroup[]
@@ -79,6 +80,16 @@ export function Sidebar({
     id: string
     before: boolean
   } | null>(null)
+  const [confirm, setConfirm] = useState<
+    { kind: 'server' | 'group'; id: string; name: string } | null
+  >(null)
+
+  const doConfirmDelete = () => {
+    if (!confirm) return
+    if (confirm.kind === 'server') onDeleteServer(confirm.id)
+    else onDeleteGroup(confirm.id)
+    setConfirm(null)
+  }
 
   const startEdit = (group: ServerGroup) => {
     setEditingId(group.id)
@@ -331,7 +342,13 @@ export function Sidebar({
                       {groups.length > 1 && (
                         <button
                           title="删除分组"
-                          onClick={() => onDeleteGroup(group.id)}
+                          onClick={() =>
+                            setConfirm({
+                              kind: 'group',
+                              id: group.id,
+                              name: group.name,
+                            })
+                          }
                           className="hidden rounded p-0.5 hover:text-destructive group-hover/header:block"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -369,7 +386,13 @@ export function Sidebar({
                           onClick={() => onSelect(server)}
                           onDoubleClick={() => onEditServer(server)}
                           onEdit={() => onEditServer(server)}
-                          onDelete={() => onDeleteServer(server.id)}
+                          onDelete={() =>
+                            setConfirm({
+                              kind: 'server',
+                              id: server.id,
+                              name: server.name,
+                            })
+                          }
                           onDragStart={() => setDraggingId(server.id)}
                           onDragEnd={() => {
                             setDraggingId(null)
@@ -405,6 +428,28 @@ export function Sidebar({
           添加服务器
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={!!confirm}
+        destructive
+        title={confirm?.kind === 'group' ? '删除分组' : '删除服务器'}
+        confirmText="删除"
+        description={
+          confirm?.kind === 'group' ? (
+            <>
+              确定删除分组「<span className="text-foreground">{confirm?.name}</span>」吗？
+              组内的服务器将被移动到第一个分组，此操作不可撤销。
+            </>
+          ) : (
+            <>
+              确定删除服务器「<span className="text-foreground">{confirm?.name}</span>」吗？
+              此操作不可撤销。
+            </>
+          )
+        }
+        onConfirm={doConfirmDelete}
+        onCancel={() => setConfirm(null)}
+      />
     </aside>
   )
 }

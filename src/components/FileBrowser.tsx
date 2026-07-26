@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   onDownloadProgress,
+  onUploadProgress,
   sftpDownload,
   sftpHome,
   sftpList,
@@ -98,13 +99,20 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     if (typeof picked !== 'string') return
     setBusy('正在上传...')
     setError(null)
+    setProgress({ transferred: 0, total: 0 })
+    const unlisten = await onUploadProgress((p) => {
+      if (p.id === sessionId)
+        setProgress({ transferred: p.transferred, total: p.total })
+    })
     try {
       await sftpUpload(sessionId, picked, joinPath(path, baseName(picked)))
       await loadDir(path)
     } catch (e) {
       setError(String(e))
     } finally {
+      unlisten()
       setBusy(null)
+      setProgress(null)
     }
   }
 
