@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { KeyRound, Lock } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
+import { groupDisplayName } from '@/lib/groups'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -86,12 +87,19 @@ export function ServerFormModal({
                 onValueChange={(v) => set('groupId', v as string)}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t('selectGroup')} />
+                  <SelectValue placeholder={t('selectGroup')}>
+                    {(value) => {
+                      const group = groups.find((g) => g.id === value)
+                      return group
+                        ? groupDisplayName(group, t)
+                        : t('selectGroup')
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {groups.map((g) => (
                     <SelectItem key={g.id} value={g.id}>
-                      {g.name}
+                      {groupDisplayName(g, t)}
                     </SelectItem>
                   ))}
                 </SelectContent>

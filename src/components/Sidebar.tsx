@@ -450,20 +450,17 @@ export function Sidebar({
       <ConfirmDialog
         open={!!confirm}
         destructive
-        title={confirm?.kind === 'group' ? '删除分组' : '删除服务器'}
-        confirmText="删除"
+        title={confirm?.kind === 'group' ? t('deleteGroup') : t('deleteServerTitle')}
+        confirmText={t('delete')}
         description={
-          confirm?.kind === 'group' ? (
-            <>
-              确定删除分组「<span className="text-foreground">{confirm?.name}</span>」吗？
-              组内的服务器将被移动到第一个分组，此操作不可撤销。
-            </>
-          ) : (
-            <>
-              确定删除服务器「<span className="text-foreground">{confirm?.name}</span>」吗？
-              此操作不可撤销。
-            </>
-          )
+          confirm
+            ? t(
+                confirm.kind === 'group'
+                  ? 'deleteGroupConfirm'
+                  : 'deleteServerConfirm',
+                { name: confirm.name },
+              )
+            : null
         }
         onConfirm={doConfirmDelete}
         onCancel={() => setConfirm(null)}
