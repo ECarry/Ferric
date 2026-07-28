@@ -2,6 +2,7 @@ use russh::ChannelMsg;
 use serde::{Deserialize, Serialize};
 
 // 复用项目现有的 SSH 配置与连接认证
+use crate::error::AppError;
 use crate::ssh::{connect_and_auth, ConnectConfig};
 
 /// 返回给前端的容器信息
@@ -63,20 +64,19 @@ struct DockerPsRow {
 
 /// 在远程 SSH 通道中执行单个命令并获取 stdout。
 /// 若命令返回非 0 退出码，将 stdout + stderr 一并返回给前端提示。
-async fn exec_remote_cmd(config: &ConnectConfig, cmd: &str) -> Result<String, String> {
-    let session = connect_and_auth(config)
-        .await
-        .map_err(|e| format!("SSH 连接失败: {}", e))?;
+async fn exec_remote_cmd(config: &ConnectConfig, cmd: &str) -> Result<String, AppError> {
+    // Propagate the structured connection/auth error untouched.
+    let session = connect_and_auth(config).await.map_err(AppError::from)?;
 
     let mut channel = session
         .channel_open_session()
         .await
-        .map_err(|e| format!("打开 SSH Channel 失败: {}", e))?;
+        .map_err(|e| AppError::new("errSshChannel").detail(e))?;
 
     channel
         .exec(true, cmd)
         .await
-        .map_err(|e| format!("执行远程 Docker 命令失败: {}", e))?;
+        .map_err(|e| AppError::new("errDockerExec").detail(e))?;
 
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -97,10 +97,9 @@ async fn exec_remote_cmd(config: &ConnectConfig, cmd: &str) -> Result<String, St
     let stderr_str = String::from_utf8_lossy(&stderr).trim().to_string();
 
     if matches!(exit_status, Some(status) if status != 0) {
-        return Err(format!(
-            "远程命令执行失败 (exit: {:?}): {} {}",
-            exit_status, stdout_str, stderr_str
-        ));
+        return Err(AppError::new("errDockerCommandFailed")
+            .param("exit", exit_status.unwrap_or_default())
+            .detail(format!("{stdout_str} {stderr_str}").trim()));
     }
 
     Ok(stdout_str)
@@ -121,13 +120,14 @@ fn shell_quote(value: &str) -> String {
 
 /// 1. 获取远程 Docker 版本信息
 #[tauri::command]
-pub async fn get_remote_docker_version(config: ConnectConfig) -> Result<DockerInfo, String> {
+pub async fn get_remote_docker_version(config: ConnectConfig) -> Result<DockerInfo, AppError> {
     let cmd = "docker version --format '{{json .Server}}'";
 
     let raw_json = exec_remote_cmd(&config, cmd).await?;
 
-    let parsed: DockerVersionRow = serde_json::from_str(raw_json.trim())
-        .map_err(|e| format!("解析 Docker 版本 JSON 失败: {} (原始输出: {})", e, raw_json))?;
+    let parsed: DockerVersionRow = serde_json::from_str(raw_json.trim()).map_err(|e| {
+        AppError::new("errDockerParse").detail(format!("{e} (raw: {raw_json})"))
+    })?;
 
     Ok(DockerInfo {
         version: parsed.version.unwrap_or_else(|| "Unknown".to_string()),
@@ -142,7 +142,7 @@ pub async fn get_remote_docker_version(config: ConnectConfig) -> Result<DockerIn
 pub async fn list_remote_containers(
     config: ConnectConfig,
     all: bool,
-) -> Result<Vec<DockerContainer>, String> {
+) -> Result<Vec<DockerContainer>, AppError> {
     let all_flag = if all { "-a" } else { "" };
     // Docker provides correctly escaped JSON for each row.
     let cmd = format!("docker ps {} --format '{{{{json .}}}}'", all_flag);
@@ -157,8 +157,9 @@ pub async fn list_remote_containers(
         if line.is_empty() {
             continue;
         }
-        let row: DockerPsRow = serde_json::from_str(line)
-            .map_err(|e| format!("解析 Docker 容器 JSON 失败: {} (原始输出: {})", e, line))?;
+        let row: DockerPsRow = serde_json::from_str(line).map_err(|e| {
+            AppError::new("errDockerParse").detail(format!("{e} (raw: {line})"))
+        })?;
         containers.push(DockerContainer {
             id: row.id,
             image: row.image,
@@ -178,16 +179,16 @@ pub async fn control_remote_container(
     config: ConnectConfig,
     container_id: String,
     action: String, // "start" | "stop" | "restart"
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let valid_actions = ["start", "stop", "restart"];
     if !valid_actions.contains(&action.as_str()) {
-        return Err("不支持的操作类型".to_string());
+        return Err(AppError::new("errDockerBadAction"));
     }
 
     // This value is interpolated into a shell command, so permit only valid
     // Docker name / ID characters.
     if !is_valid_container_name(&container_id) {
-        return Err("无效的容器 ID 或名称".to_string());
+        return Err(AppError::new("errDockerBadContainerId"));
     }
 
     let cmd = format!("docker {} {}", action, container_id);
@@ -202,15 +203,15 @@ pub async fn control_remote_container(
 pub async fn create_remote_container(
     config: ConnectConfig,
     input: CreateContainerInput,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if input.image.trim().is_empty() {
-        return Err("镜像不能为空".to_string());
+        return Err(AppError::new("errDockerEmptyImage"));
     }
 
     let name = input.name.filter(|name| !name.trim().is_empty());
     if let Some(name) = &name {
         if !is_valid_container_name(name) {
-            return Err("无效的容器名称".to_string());
+            return Err(AppError::new("errDockerBadContainerName"));
         }
     }
 
@@ -238,9 +239,9 @@ pub async fn rename_remote_container(
     config: ConnectConfig,
     container_id: String,
     name: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if !is_valid_container_name(&container_id) || !is_valid_container_name(&name) {
-        return Err("无效的容器 ID 或名称".to_string());
+        return Err(AppError::new("errDockerBadContainerId"));
     }
 
     let cmd = format!(

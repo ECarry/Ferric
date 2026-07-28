@@ -10,6 +10,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use crate::error::AppError;
 use crate::ssh::{connect_and_auth, Client, ConnectConfig};
 
 /// A live SFTP session plus the SSH handle that keeps its connection open.
@@ -28,7 +29,7 @@ pub struct SftpManager {
 
 /// Reset and return the cancellation flag for a session, called at the start
 /// of every transfer so a stale cancel doesn't abort the next one.
-fn begin_transfer(state: &State<'_, SftpManager>, id: &str) -> Result<Arc<AtomicBool>, String> {
+fn begin_transfer(state: &State<'_, SftpManager>, id: &str) -> Result<Arc<AtomicBool>, AppError> {
     let mut cancels = state.cancels.lock().map_err(|e| e.to_string())?;
     let flag = cancels
         .entry(id.to_string())
@@ -52,12 +53,12 @@ pub struct RemoteFile {
 }
 
 /// Pull an `Arc<SftpSession>` out of the manager for a given id.
-fn session_for(state: &State<'_, SftpManager>, id: &str) -> Result<Arc<SftpSession>, String> {
+fn session_for(state: &State<'_, SftpManager>, id: &str) -> Result<Arc<SftpSession>, AppError> {
     let sessions = state.sessions.lock().map_err(|e| e.to_string())?;
     sessions
         .get(id)
         .map(|c| c.sftp.clone())
-        .ok_or_else(|| "SFTP 会话不存在或已关闭".to_string())
+        .ok_or_else(|| AppError::new("errSftpNoSession"))
 }
 
 /// Format a unix mtime as a local "YYYY-MM-DD HH:MM" string.
@@ -94,10 +95,8 @@ fn format_permissions(kind: &FileType, perms: Option<u32>) -> String {
 pub async fn sftp_connect(
     state: State<'_, SftpManager>,
     config: ConnectConfig,
-) -> Result<String, String> {
-    let session = connect_and_auth(&config)
-        .await
-        .map_err(|e| e.to_string())?;
+) -> Result<String, AppError> {
+    let session = connect_and_auth(&config).await.map_err(AppError::from)?;
 
     let channel = session
         .channel_open_session()
@@ -125,9 +124,9 @@ pub async fn sftp_connect(
 
 /// Resolve the absolute path for a (possibly relative) path — used for the home dir.
 #[tauri::command]
-pub async fn sftp_home(state: State<'_, SftpManager>, id: String) -> Result<String, String> {
+pub async fn sftp_home(state: State<'_, SftpManager>, id: String) -> Result<String, AppError> {
     let sftp = session_for(&state, &id)?;
-    sftp.canonicalize(".").await.map_err(|e| e.to_string())
+    sftp.canonicalize(".").await.map_err(|e| e.to_string().into())
 }
 
 /// List the contents of a remote directory.
@@ -136,7 +135,7 @@ pub async fn sftp_list(
     state: State<'_, SftpManager>,
     id: String,
     path: String,
-) -> Result<Vec<RemoteFile>, String> {
+) -> Result<Vec<RemoteFile>, AppError> {
     let sftp = session_for(&state, &id)?;
     let entries = sftp.read_dir(path).await.map_err(|e| e.to_string())?;
 
@@ -182,7 +181,7 @@ pub async fn sftp_download(
     id: String,
     remote_path: String,
     local_path: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
     let cancel = begin_transfer(&state, &id)?;
     // Best-effort total size for the progress bar; 0 means unknown.
@@ -255,7 +254,7 @@ pub async fn sftp_download_dir(
     id: String,
     remote_path: String,
     local_path: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     use std::path::PathBuf;
 
     let sftp = session_for(&state, &id)?;
@@ -364,7 +363,7 @@ pub async fn sftp_upload(
     id: String,
     local_path: String,
     remote_path: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
     let cancel = begin_transfer(&state, &id)?;
     let total = tokio::fs::metadata(&local_path)
@@ -425,7 +424,7 @@ pub async fn sftp_upload(
 
 /// Cancel an in-flight transfer (upload/download) for the given session.
 #[tauri::command]
-pub fn sftp_cancel(state: State<'_, SftpManager>, id: String) -> Result<(), String> {
+pub fn sftp_cancel(state: State<'_, SftpManager>, id: String) -> Result<(), AppError> {
     let cancels = state.cancels.lock().map_err(|e| e.to_string())?;
     if let Some(flag) = cancels.get(&id) {
         flag.store(true, Ordering::SeqCst);
@@ -439,9 +438,9 @@ pub async fn sftp_mkdir(
     state: State<'_, SftpManager>,
     id: String,
     path: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
-    sftp.create_dir(path).await.map_err(|e| e.to_string())
+    sftp.create_dir(path).await.map_err(|e| e.to_string().into())
 }
 
 /// Remove a file or (empty) directory.
@@ -451,12 +450,12 @@ pub async fn sftp_remove(
     id: String,
     path: String,
     is_dir: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
     if is_dir {
-        sftp.remove_dir(path).await.map_err(|e| e.to_string())
+        sftp.remove_dir(path).await.map_err(|e| e.to_string().into())
     } else {
-        sftp.remove_file(path).await.map_err(|e| e.to_string())
+        sftp.remove_file(path).await.map_err(|e| e.to_string().into())
     }
 }
 
@@ -467,14 +466,14 @@ pub async fn sftp_rename(
     id: String,
     from: String,
     to: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
-    sftp.rename(from, to).await.map_err(|e| e.to_string())
+    sftp.rename(from, to).await.map_err(|e| e.to_string().into())
 }
 
 /// Close an SFTP session and drop its SSH connection.
 #[tauri::command]
-pub async fn sftp_disconnect(state: State<'_, SftpManager>, id: String) -> Result<(), String> {
+pub async fn sftp_disconnect(state: State<'_, SftpManager>, id: String) -> Result<(), AppError> {
     if let Ok(mut cancels) = state.cancels.lock() {
         cancels.remove(&id);
     }

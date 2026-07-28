@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 
+use crate::error::AppError;
+
 /// Config sent from the frontend to open a connection.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,12 +76,10 @@ pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Hand
     let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), Client)
         .await
         .map_err(|e| {
-            anyhow::anyhow!(
-                "无法连接到 {}:{}（请检查主机地址、端口与网络连接）：{}",
-                cfg.host,
-                cfg.port,
-                e
-            )
+            AppError::new("errSshConnect")
+                .param("host", &cfg.host)
+                .param("port", cfg.port)
+                .detail(e)
         })?;
 
     let authenticated = match cfg.auth_type.as_str() {
@@ -87,10 +87,9 @@ pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Hand
             let path = cfg
                 .key_path
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("未提供私钥路径"))?;
-            let key_pair = load_secret_key(path, cfg.key_passphrase.as_deref()).map_err(|e| {
-                anyhow::anyhow!("私钥加载失败（文件不存在、格式不支持或口令不正确）：{}", e)
-            })?;
+                .ok_or_else(|| AppError::new("errSshNoKeyPath"))?;
+            let key_pair = load_secret_key(path, cfg.key_passphrase.as_deref())
+                .map_err(|e| AppError::new("errSshKeyLoad").detail(e))?;
             let hash = session.best_supported_rsa_hash().await?.flatten();
             session
                 .authenticate_publickey(
@@ -98,24 +97,24 @@ pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Hand
                     PrivateKeyWithHashAlg::new(Arc::new(key_pair), hash),
                 )
                 .await
-                .map_err(|e| anyhow::anyhow!("认证过程出错：{}", e))?
+                .map_err(|e| AppError::new("errSshAuthProcess").detail(e))?
                 .success()
         }
         _ => {
             let password = cfg
                 .password
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("未提供密码"))?;
+                .ok_or_else(|| AppError::new("errSshNoPassword"))?;
             session
                 .authenticate_password(&cfg.username, password)
                 .await
-                .map_err(|e| anyhow::anyhow!("认证过程出错：{}", e))?
+                .map_err(|e| AppError::new("errSshAuthProcess").detail(e))?
                 .success()
         }
     };
 
     if !authenticated {
-        anyhow::bail!("认证失败：用户名、密码或密钥不正确");
+        return Err(AppError::new("errSshAuthFailed").into());
     }
 
     Ok(session)
@@ -201,8 +200,8 @@ pub async fn ssh_connect(
     app: AppHandle,
     state: State<'_, SshManager>,
     config: ConnectConfig,
-) -> Result<String, String> {
-    let (session, channel) = establish(&config).await.map_err(|e| e.to_string())?;
+) -> Result<String, AppError> {
+    let (session, channel) = establish(&config).await.map_err(AppError::from)?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let (tx, rx) = mpsc::unbounded_channel();
@@ -227,7 +226,7 @@ pub fn ssh_send_input(
     state: State<'_, SshManager>,
     id: String,
     data: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let sessions = state.sessions.lock().map_err(|e| e.to_string())?;
     if let Some(tx) = sessions.get(&id) {
         tx.send(InputMsg::Data(data.into_bytes()))
@@ -242,7 +241,7 @@ pub fn ssh_resize(
     id: String,
     cols: u32,
     rows: u32,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let sessions = state.sessions.lock().map_err(|e| e.to_string())?;
     if let Some(tx) = sessions.get(&id) {
         let _ = tx.send(InputMsg::Resize { cols, rows });
@@ -251,7 +250,7 @@ pub fn ssh_resize(
 }
 
 #[tauri::command]
-pub fn ssh_disconnect(state: State<'_, SshManager>, id: String) -> Result<(), String> {
+pub fn ssh_disconnect(state: State<'_, SshManager>, id: String) -> Result<(), AppError> {
     let mut sessions = state.sessions.lock().map_err(|e| e.to_string())?;
     if let Some(tx) = sessions.remove(&id) {
         let _ = tx.send(InputMsg::Close);

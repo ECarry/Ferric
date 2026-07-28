@@ -1,3 +1,4 @@
+mod error;
 mod sftp;
 mod ssh;
 mod store;
