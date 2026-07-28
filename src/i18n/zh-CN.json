@@ -119,5 +119,9 @@
   "errConfigSerialize": "序列化配置失败",
   "errConfigWrite": "写入配置失败",
   "errKeychain": "无法写入密钥链",
-  "errUnknown": "发生未知错误: {{detail}}"
+  "errUnknown": "发生未知错误: {{detail}}",
+  "downloadComplete": "更新已下载，请重启应用以应用更新。",
+  "restartApp": "立即重启应用",
+  "restartAppLater": "稍后重启",
+  "restartError": "重启失败"
 }

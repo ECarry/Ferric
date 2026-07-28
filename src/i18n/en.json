@@ -119,5 +119,9 @@
   "errConfigSerialize": "Failed to serialize config",
   "errConfigWrite": "Failed to write config",
   "errKeychain": "Could not write to keychain",
-  "errUnknown": "An unknown error occurred: {{detail}}"
+  "errUnknown": "An unknown error occurred: {{detail}}",
+  "downloadComplete": "Update downloaded. Restart to apply the update.",
+  "restartApp": "Restart App",
+  "restartAppLater": "Restart Later",
+  "restartError": "Failed to restart"
 }

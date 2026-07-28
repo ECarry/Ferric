@@ -46,6 +46,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { getVersion } from '@tauri-apps/api/app'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { check as checkUpdate } from '@tauri-apps/plugin-updater'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
@@ -489,6 +490,10 @@ function HelpDialog() {
   const [version, setVersion] = useState('')
   const [checking, setChecking] = useState(false)
   const [update, setUpdate] = useState<NonNullable<Awaited<ReturnType<typeof checkUpdate>>> | null>(null)
+  const [installed, setInstalled] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [contentLength, setContentLength] = useState(0)
+  const [downloaded, setDownloaded] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -497,6 +502,9 @@ function HelpDialog() {
     setError(null)
     setMessage(null)
     setUpdate(null)
+    setInstalled(false)
+    setDownloaded(0)
+    setContentLength(0)
     try {
       const u = await checkUpdate()
       if (u?.available) {
@@ -512,17 +520,36 @@ function HelpDialog() {
 
   const handleInstall = async () => {
     if (!update) return
-    setChecking(true)
+    setDownloading(true)
+    setInstalled(false)
     setError(null)
     setMessage(null)
+    setDownloaded(0)
+    setContentLength(0)
     try {
-      await update.downloadAndInstall()
-      setMessage(t('restartLater'))
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          setContentLength(event.data.contentLength ?? 0)
+        } else if (event.event === 'Progress') {
+          setDownloaded((d) => d + event.data.chunkLength)
+        }
+      })
+      setInstalled(true)
+      setMessage(t('downloadComplete'))
     } catch (e) {
       console.error(e)
       setError(t('updateError'))
     } finally {
-      setChecking(false)
+      setDownloading(false)
+    }
+  }
+
+  const handleRestart = async () => {
+    try {
+      await relaunch()
+    } catch (e) {
+      console.error(e)
+      setError(t('restartError'))
     }
   }
 
@@ -540,7 +567,7 @@ function HelpDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <Button variant="ghost" size="icon" className="relative" aria-label={t('help')} onClick={() => setOpen(true)}>
         <HelpCircle className="h-5 w-5" />
-        {update && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />}
+        {update && !installed && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />}
       </Button>
       <DialogContent>
         <DialogHeader>
@@ -556,20 +583,43 @@ function HelpDialog() {
               )}
             </div>
           )}
-          {!update && error && <p className="text-sm text-destructive">{error}</p>}
-          {!update && !error && message && <p className="text-sm text-green-600">{message}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          {message && <p className="text-sm text-green-600">{message}</p>}
           {!update && !error && !message && (
             <p className="text-sm text-muted-foreground">{t('updateNotAvailable')}</p>
           )}
+          {downloading && (
+            <div className="space-y-1">
+              <div className="text-sm text-muted-foreground">
+                {t('downloadUpdate')} {contentLength > 0 ? `${Math.round((downloaded / contentLength) * 100)}%` : ''}
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: contentLength > 0 ? `${Math.min(100, (downloaded / contentLength) * 100)}%` : '0%',
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={handleCheck} disabled={checking}>
+          <Button variant="outline" onClick={handleCheck} disabled={checking || downloading}>
             {checking ? t('checkingForUpdates') : t('checkForUpdates')}
           </Button>
-          {update && (
-            <Button onClick={handleInstall} disabled={checking}>
-              {checking ? t('downloadUpdate') : t('downloadAndInstall')}
+          {update && !installed && !downloading && (
+            <Button onClick={handleInstall} disabled={checking || downloading}>
+              {t('downloadAndInstall')}
             </Button>
+          )}
+          {installed && (
+            <>
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                {t('restartAppLater')}
+              </Button>
+              <Button onClick={handleRestart}>{t('restartApp')}</Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>
