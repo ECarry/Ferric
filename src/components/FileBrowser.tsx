@@ -14,6 +14,7 @@ import {
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import type { RemoteFile } from '@/types'
 import { cn } from '@/lib/utils'
+import { formatAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import {
@@ -84,12 +85,12 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         setPath(target)
         setSelected(null)
       } catch (e) {
-        setError(String(e))
+        setError(formatAppError(e, t))
       } finally {
         setLoading(false)
       }
     },
-    [sessionId],
+    [sessionId, t],
   )
 
   // On session change, jump to the remote home directory.
@@ -124,7 +125,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       await sftpUpload(sessionId, picked, joinPath(path, baseName(picked)))
       await loadDir(path)
     } catch (e) {
-      setError(String(e))
+      setError(formatAppError(e, t))
     } finally {
       unlisten()
       setBusy(null)
@@ -159,7 +160,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         await sftpDownload(sessionId, remotePath, dest)
       }
     } catch (e) {
-      setError(String(e))
+      setError(formatAppError(e, t))
     } finally {
       unlisten()
       setBusy(null)

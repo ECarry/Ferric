@@ -3,6 +3,7 @@ import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, Square 
 import { Button } from '@/components/ui/button'
 import { ContainerFormModal } from '@/components/docker/ContainerFormModal'
 import { cn } from '@/lib/utils'
+import { formatAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
 import {
   controlRemoteContainer,
@@ -39,11 +40,11 @@ export function DockerView({ sshConfig }: Props) {
       setInfo(verInfo)
       setContainers(containerList)
     } catch (err) {
-      setError(formatError(err, t('dockerUnavailable')))
+      setError(formatAppError(err, t))
     } finally {
       setLoading(false)
     }
-  }, [sshConfig])
+  }, [sshConfig, t])
 
   const onControl = async (id: string, action: 'start' | 'stop' | 'restart') => {
     setActingId(id)
@@ -52,7 +53,7 @@ export function DockerView({ sshConfig }: Props) {
       await controlRemoteContainer(sshConfig, id, action)
       await loadData()
     } catch (err) {
-      setError(formatError(err, t('dockerUnavailable')))
+      setError(formatAppError(err, t))
     } finally {
       setActingId(null)
     }
@@ -68,7 +69,7 @@ export function DockerView({ sshConfig }: Props) {
       }
       await loadData()
     } catch (err) {
-      const message = formatError(err, t('dockerUnavailable'))
+      const message = formatAppError(err, t)
       setError(message)
       throw new Error(message, { cause: err })
     }
@@ -239,7 +240,3 @@ export function DockerView({ sshConfig }: Props) {
   )
 }
 
-function formatError(error: unknown, fallback: string) {
-  if (error instanceof Error) return error.message
-  return typeof error === 'string' ? error : fallback
-}

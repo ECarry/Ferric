@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Container, FolderTree, Loader2, Pencil, Plug, Power, TerminalSquare } from 'lucide-react'
 import type { ConnectionStatus, Server } from '@/types'
 import { cn } from '@/lib/utils'
+import { formatAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -117,9 +118,9 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
         .catch((e) => console.error('SFTP 连接失败', e))
     } catch (e) {
       setStatus('error')
-      setError(String(e))
+      setError(formatAppError(e, t))
     }
-  }, [sshConfig])
+  }, [sshConfig, t])
 
   if (!server) return <WelcomeScreen />
 
