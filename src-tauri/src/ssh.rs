@@ -139,12 +139,13 @@ impl client::Handler for Client {
 const SSH_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Handle<Client>> {
+    let host = cfg.host.trim();
     let config = Arc::new(client::Config::default());
     let client = Client {
-        host: cfg.host.clone(),
+        host: host.to_string(),
         port: cfg.port,
     };
-    let connect_fut = client::connect(config, (cfg.host.as_str(), cfg.port), client);
+    let connect_fut = client::connect(config, (host, cfg.port), client);
     let mut session = tokio::time::timeout(SSH_CONNECT_TIMEOUT, connect_fut)
         .await
         .map_err(|_| {

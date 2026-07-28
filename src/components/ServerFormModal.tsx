@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { KeyRound, Lock } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
@@ -48,21 +48,10 @@ export function ServerFormModal({
   onSave,
 }: ServerFormModalProps) {
   const { t } = useI18n()
-  const [form, setForm] = useState<Server>(emptyForm(groups[0]?.id ?? ''))
 
-  useEffect(() => {
-    if (open) {
-      setForm(initial ? { ...initial } : emptyForm(groups[0]?.id ?? ''))
-    }
-  }, [open, initial, groups])
-
-  const set = <K extends keyof Server>(key: K, value: Server[K]) =>
-    setForm((f) => ({ ...f, [key]: value }))
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    onSave({ ...form, id: form.id || `s-${Date.now()}` })
-  }
+  // The key is derived from the server id (or 'new') so the inner form
+  // remounts with fresh state when switching between add/edit targets.
+  const formKey = initial?.id ?? 'new'
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -70,6 +59,84 @@ export function ServerFormModal({
         <DialogHeader>
           <DialogTitle>{initial ? t('editServer') : t('addServerTitle')}</DialogTitle>
         </DialogHeader>
+
+        {open && (
+          <ServerFormInner
+            key={formKey}
+            groups={groups}
+            initial={initial}
+            onSave={onSave}
+            onCancel={onClose}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ServerFormInner({
+  groups,
+  initial,
+  onSave,
+  onCancel,
+}: {
+  groups: ServerGroup[]
+  initial?: Server | null
+  onSave: (server: Server) => void
+  onCancel: () => void
+}) {
+  const { t } = useI18n()
+  const [form, setForm] = useState<Server>(
+    initial ? { ...initial } : emptyForm(groups[0]?.id ?? ''),
+  )
+
+  // Validate host: IPv4, IPv6, or domain name (with optional port already separate).
+  const validateHost = (value: string): boolean => {
+    const host = value.trim()
+    if (!host) return false
+    // IPv4: four numeric octets, each 0-255, no leading zeros (except "0" itself)
+    const parts = host.split('.')
+    const looksLikeIpv4 = parts.length === 4 && parts.every(p => /^\d+$/.test(p))
+    if (looksLikeIpv4) {
+      if (parts.every(p => {
+        if (p.length > 1 && p.startsWith('0')) return false
+        const n = Number(p)
+        return n >= 0 && n <= 255
+      })) return true
+      // Looks like an IP but has invalid octets — reject, don't fall through to domain.
+      return false
+    }
+    // IPv6: full or compressed form
+    const ipv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/
+    if (ipv6.test(host)) return true
+    // Domain name: labels separated by dots, each 1-63 chars, alphanumeric + hyphen
+    const domain = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/
+    if (domain.test(host)) return true
+    // localhost
+    if (host === 'localhost') return true
+    return false
+  }
+
+  const isHostValid = useMemo(() => validateHost(form.host), [form.host])
+
+  const set = <K extends keyof Server>(key: K, value: Server[K]) =>
+    setForm((f) => ({ ...f, [key]: value }))
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    const trimmedHost = form.host.trim()
+    if (!validateHost(trimmedHost)) {
+      return
+    }
+    onSave({
+      ...form,
+      id: form.id || `s-${Date.now()}`,
+      host: trimmedHost,
+      username: form.username.trim(),
+    })
+  }
+
+  return (
 
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -113,9 +180,13 @@ export function ServerFormModal({
                 <Input
                   required
                   value={form.host}
+                  aria-invalid={!isHostValid && form.host.length > 0}
                   onChange={(e) => set('host', e.target.value)}
                   placeholder="10.0.1.11"
                 />
+                {form.host.length > 0 && !isHostValid && (
+                  <p className="mt-1 text-xs text-destructive">{t('errInvalidHost')}</p>
+                )}
               </Field>
             </div>
             <Field label={t('port')}>
@@ -186,14 +257,12 @@ export function ServerFormModal({
           )}
 
           <DialogFooter className="mt-2">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onCancel}>
               {t('cancel')}
             </Button>
-            <Button type="submit">{t('save')}</Button>
+            <Button type="submit" disabled={!isHostValid}>{t('save')}</Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
   )
 }
 

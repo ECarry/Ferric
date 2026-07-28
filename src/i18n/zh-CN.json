@@ -10,6 +10,7 @@
   "remove": "删除",
   "deleteContainer": "删除容器",
   "confirmDeleteContainer": "删除容器 \"{{name}}\"？这将移除容器（如果正在运行将强制删除）。",
+  "errInvalidHost": "无效的主机：必须是 IPv4/IPv6 地址或域名（如 10.0.1.11、example.com）",
   "newFolderPrompt": "请输入目录名：",
   "renamePrompt": "请输入新名称：",
   "confirmDelete": "删除 \"{{name}}\"？此操作不可撤销。",

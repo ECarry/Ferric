@@ -10,6 +10,7 @@
   "remove": "Remove",
   "deleteContainer": "Delete container",
   "confirmDeleteContainer": "Delete container \"{{name}}\"? This will remove the container (use force if it's running).",
+  "errInvalidHost": "Invalid host: must be an IPv4/IPv6 address or a domain name (e.g. 10.0.1.11, example.com)",
   "newFolderPrompt": "Enter directory name:",
   "renamePrompt": "Enter new name:",
   "confirmDelete": "Delete \"{{name}}\"? This action cannot be undone.",
