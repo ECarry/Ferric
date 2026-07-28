@@ -72,6 +72,7 @@ jobs:
       # 6. 使用 tag annotation 作为 release 说明，并解析出 tag 指向的 commit
       - name: Extract release notes and commit from tag
         id: tag-meta
+        shell: bash
         run: |
           body=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
           printf '%s\n' "$body" > release-body.txt
