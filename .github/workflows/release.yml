@@ -11,6 +11,7 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           # 1. macOS - Apple Silicon (M1/M2/M3/M4)
