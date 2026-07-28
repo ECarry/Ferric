@@ -66,7 +66,15 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # 6. 使用适配 Tauri v2 的 tauri-action
+      # 6. 使用 tag annotation 作为 release 说明
+      - name: Extract release notes from tag
+        id: tag-notes
+        run: |
+          body=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
+          printf '%s\n' "$body" > release-body.txt
+          cat release-body.txt
+
+      # 7. 使用适配 Tauri v2 的 tauri-action
       - name: Build and Publish Tauri App
         uses: tauri-apps/tauri-action@v0.5 # 👈 这里切换到了适配 v2 的 Action
         env:
@@ -75,6 +83,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Ferric ${{ github.ref_name }}'
+          body_path: release-body.txt
           releaseBody: 'See the assets below to download.'
           releaseDraft: false
           prerelease: false
