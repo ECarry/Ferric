@@ -29,6 +29,14 @@ export function getRemoteDockerVersion(config: SshConnectConfig): Promise<Docker
   return invoke<DockerInfo>('get_remote_docker_version', { config })
 }
 
+/** 获取远程服务器的 Docker 版本和容器列表（单次 SSH 连接） */
+export function getRemoteDockerInfo(
+  config: SshConnectConfig,
+  all = true,
+): Promise<[DockerInfo, DockerContainer[]]> {
+  return invoke<[DockerInfo, DockerContainer[]]>('get_remote_docker_info', { config, all })
+}
+
 /** 获取远程服务器的容器列表 */
 export function listRemoteContainers(config: SshConnectConfig, all = true): Promise<DockerContainer[]> {
   return invoke<DockerContainer[]>('list_remote_containers', { config, all })
@@ -62,4 +70,13 @@ export function renameRemoteContainer(
   name: string,
 ): Promise<void> {
   return invoke<void>('rename_remote_container', { config, containerId, name })
+}
+
+/** 删除远程容器。force=true 时使用 docker rm -f。 */
+export function removeRemoteContainer(
+  config: SshConnectConfig,
+  containerId: string,
+  force: boolean,
+): Promise<void> {
+  return invoke<void>('remove_remote_container', { config, containerId, force })
 }

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use russh::client::{self, Handle};
 use russh::keys::*;
@@ -9,6 +10,35 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 
 use crate::error::AppError;
+
+/// Path to the known_hosts file, set once during app startup.
+static KNOWN_HOSTS_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// Set the known_hosts file path. Called once from `lib.rs` setup.
+pub fn set_known_hosts_path(path: PathBuf) {
+    let _ = KNOWN_HOSTS_PATH.set(path);
+}
+
+/// Read the known_hosts JSON file: `{ "host:port": "SHA256:..." }`.
+fn load_known_hosts() -> std::collections::BTreeMap<String, String> {
+    let Some(path) = KNOWN_HOSTS_PATH.get() else {
+        return std::collections::BTreeMap::new();
+    };
+    match std::fs::read_to_string(path) {
+        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
+        Err(_) => std::collections::BTreeMap::new(),
+    }
+}
+
+/// Persist the known_hosts map to disk.
+fn save_known_hosts(map: &std::collections::BTreeMap<String, String>) {
+    let Some(path) = KNOWN_HOSTS_PATH.get() else {
+        return;
+    };
+    if let Ok(json) = serde_json::to_string_pretty(map) {
+        let _ = std::fs::write(path, json);
+    }
+}
 
 /// Config sent from the frontend to open a connection.
 #[derive(Debug, Deserialize)]
@@ -54,27 +84,74 @@ pub struct SshManager {
     sessions: Mutex<HashMap<String, mpsc::UnboundedSender<InputMsg>>>,
 }
 
-/// russh client handler. We accept any server key here for simplicity;
-/// a production client should verify against a known_hosts store.
-pub(crate) struct Client;
+/// russh client handler with TOFU (Trust On First Use) host key verification.
+pub(crate) struct Client {
+    host: String,
+    port: u16,
+}
+
+impl Client {
+    fn key_for(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+}
 
 impl client::Handler for Client {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &ssh_key::PublicKey,
+        server_public_key: &ssh_key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        Ok(true)
+        let fp = server_public_key
+            .fingerprint(ssh_key::HashAlg::Sha256)
+            .to_string();
+        let key = self.key_for();
+
+        let mut hosts = load_known_hosts();
+        match hosts.get(&key) {
+            Some(known_fp) if known_fp == &fp => {
+                // Key matches — accept.
+                Ok(true)
+            }
+            Some(_known_fp) => {
+                // Key changed — reject (possible MITM).
+                log::warn!(
+                    "Host key changed for {}: expected {}, got {}",
+                    key,
+                    _known_fp,
+                    fp
+                );
+                Ok(false)
+            }
+            None => {
+                // First connection — trust and store (TOFU).
+                hosts.insert(key, fp);
+                save_known_hosts(&hosts);
+                Ok(true)
+            }
+        }
     }
 }
 
 /// Connect to the host and authenticate, returning the live session handle.
 /// Shared by the interactive shell and the SFTP subsystem.
+const SSH_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Handle<Client>> {
     let config = Arc::new(client::Config::default());
-    let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), Client)
+    let client = Client {
+        host: cfg.host.clone(),
+        port: cfg.port,
+    };
+    let connect_fut = client::connect(config, (cfg.host.as_str(), cfg.port), client);
+    let mut session = tokio::time::timeout(SSH_CONNECT_TIMEOUT, connect_fut)
         .await
+        .map_err(|_| {
+            AppError::new("errSshConnectTimeout")
+                .param("host", &cfg.host)
+                .param("port", cfg.port)
+        })?
         .map_err(|e| {
             AppError::new("errSshConnect")
                 .param("host", &cfg.host)
@@ -82,40 +159,47 @@ pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Hand
                 .detail(e)
         })?;
 
-    let authenticated = match cfg.auth_type.as_str() {
-        "key" => {
-            let path = cfg
-                .key_path
-                .as_ref()
-                .ok_or_else(|| AppError::new("errSshNoKeyPath"))?;
-            let key_pair = load_secret_key(path, cfg.key_passphrase.as_deref())
-                .map_err(|e| AppError::new("errSshKeyLoad").detail(e))?;
-            let hash = session.best_supported_rsa_hash().await?.flatten();
-            session
-                .authenticate_publickey(
-                    &cfg.username,
-                    PrivateKeyWithHashAlg::new(Arc::new(key_pair), hash),
-                )
-                .await
-                .map_err(|e| AppError::new("errSshAuthProcess").detail(e))?
-                .success()
-        }
-        _ => {
-            let password = cfg
-                .password
-                .as_ref()
-                .ok_or_else(|| AppError::new("errSshNoPassword"))?;
-            session
-                .authenticate_password(&cfg.username, password)
-                .await
-                .map_err(|e| AppError::new("errSshAuthProcess").detail(e))?
-                .success()
+    let auth_fut = async {
+        let authenticated = match cfg.auth_type.as_str() {
+            "key" => {
+                let path = cfg
+                    .key_path
+                    .as_ref()
+                    .ok_or_else(|| AppError::new("errSshNoKeyPath"))?;
+                let key_pair = load_secret_key(path, cfg.key_passphrase.as_deref())
+                    .map_err(|e| AppError::new("errSshKeyLoad").detail(e))?;
+                let hash = session.best_supported_rsa_hash().await?.flatten();
+                session
+                    .authenticate_publickey(
+                        &cfg.username,
+                        PrivateKeyWithHashAlg::new(Arc::new(key_pair), hash),
+                    )
+                    .await
+                    .map_err(|e| AppError::new("errSshAuthProcess").detail(e))?
+                    .success()
+            }
+            _ => {
+                let password = cfg
+                    .password
+                    .as_ref()
+                    .ok_or_else(|| AppError::new("errSshNoPassword"))?;
+                session
+                    .authenticate_password(&cfg.username, password)
+                    .await
+                    .map_err(|e| AppError::new("errSshAuthProcess").detail(e))?
+                    .success()
+            }
+        };
+        if authenticated {
+            Ok(())
+        } else {
+            Err(AppError::new("errSshAuthFailed"))
         }
     };
 
-    if !authenticated {
-        return Err(AppError::new("errSshAuthFailed").into());
-    }
+    tokio::time::timeout(SSH_CONNECT_TIMEOUT, auth_fut)
+        .await
+        .map_err(|_| AppError::new("errSshAuthTimeout").param("host", &cfg.host))??;
 
     Ok(session)
 }

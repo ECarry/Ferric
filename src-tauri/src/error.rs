@@ -65,3 +65,9 @@ impl From<anyhow::Error> for AppError {
         }
     }
 }
+
+impl From<russh::Error> for AppError {
+    fn from(error: russh::Error) -> Self {
+        AppError::new("errUnknown").detail(error)
+    }
+}

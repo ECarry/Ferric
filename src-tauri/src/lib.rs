@@ -4,6 +4,7 @@ mod ssh;
 mod store;
 mod docker;
 
+use tauri::Manager;
 use sftp::SftpManager;
 use ssh::SshManager;
 
@@ -20,6 +21,11 @@ pub fn run() {
             .level(log::LevelFilter::Info)
             .build(),
         )?;
+      }
+      // Set the known_hosts file path for TOFU host key verification.
+      if let Ok(config_dir) = app.path().app_config_dir() {
+        let _ = std::fs::create_dir_all(&config_dir);
+        ssh::set_known_hosts_path(config_dir.join("known_hosts.json"));
       }
       Ok(())
     });
@@ -52,10 +58,12 @@ pub fn run() {
       sftp::sftp_rename,
       sftp::sftp_disconnect,
       docker::get_remote_docker_version,
+      docker::get_remote_docker_info,
       docker::list_remote_containers,
       docker::control_remote_container,
       docker::create_remote_container,
       docker::rename_remote_container,
+      docker::remove_remote_container,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

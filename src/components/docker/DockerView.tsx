@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, Square } from 'lucide-react'
+import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContainerFormModal } from '@/components/docker/ContainerFormModal'
 import { cn } from '@/lib/utils'
@@ -8,13 +8,20 @@ import { useI18n } from '@/i18n'
 import {
   controlRemoteContainer,
   createRemoteContainer,
-  getRemoteDockerVersion,
-  listRemoteContainers,
+  getRemoteDockerInfo,
+  removeRemoteContainer,
   renameRemoteContainer,
   type DockerContainer,
   type DockerInfo,
 } from '@/lib/docker'
 import type { SshConnectConfig } from '@/lib/ssh'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface Props {
   sshConfig: SshConnectConfig
@@ -28,15 +35,13 @@ export function DockerView({ sshConfig }: Props) {
   const [actingId, setActingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [formTarget, setFormTarget] = useState<DockerContainer | null | undefined>(undefined)
+  const [deleteTarget, setDeleteTarget] = useState<DockerContainer | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [verInfo, containerList] = await Promise.all([
-        getRemoteDockerVersion(sshConfig),
-        listRemoteContainers(sshConfig, true),
-      ])
+      const [verInfo, containerList] = await getRemoteDockerInfo(sshConfig, true)
       setInfo(verInfo)
       setContainers(containerList)
     } catch (err) {
@@ -72,6 +77,22 @@ export function DockerView({ sshConfig }: Props) {
       const message = formatAppError(err, t)
       setError(message)
       throw new Error(message, { cause: err })
+    }
+  }
+
+  const onConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setActingId(deleteTarget.id)
+    setError(null)
+    try {
+      const running = deleteTarget.status.toLowerCase().includes('up')
+      await removeRemoteContainer(sshConfig, deleteTarget.id, running)
+      await loadData()
+    } catch (err) {
+      setError(formatAppError(err, t))
+    } finally {
+      setActingId(null)
+      setDeleteTarget(null)
     }
   }
 
@@ -202,6 +223,15 @@ export function DockerView({ sshConfig }: Props) {
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title={t('deleteContainer')}
+                        disabled={busy}
+                        onClick={() => setDeleteTarget(c)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -235,6 +265,27 @@ export function DockerView({ sshConfig }: Props) {
           onClose={() => setFormTarget(undefined)}
           onSave={onSaveContainer}
         />
+      )}
+
+      {deleteTarget && (
+        <Dialog open onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('deleteContainer')}</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              {t('confirmDeleteContainer', { name: deleteTarget.names })}
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+                {t('cancel')}
+              </Button>
+              <Button variant="destructive" onClick={() => void onConfirmDelete()}>
+                {t('confirm')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )

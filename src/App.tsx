@@ -33,16 +33,22 @@ function App() {
   }, [])
 
   // Persist whenever servers or groups change (after the initial load).
+  // Debounced to avoid excessive I/O during rapid updates (e.g. drag-reorder).
   const skipSave = useRef(true)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => {
     if (!loaded) return
     if (skipSave.current) {
       skipSave.current = false
       return
     }
-    saveConfig({ servers, groups }).catch((err) =>
-      console.error('保存配置失败', err),
-    )
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      saveConfig({ servers, groups }).catch((err) =>
+        console.error('保存配置失败', err),
+      )
+    }, 500)
+    return () => clearTimeout(saveTimer.current)
   }, [servers, groups, loaded])
 
   const handleStatusChange = useCallback(
@@ -119,13 +125,16 @@ function App() {
   const deleteGroup = (id: string) => {
     setGroups((prev) => {
       if (prev.length <= 1) return prev // keep at least one group
-      const remaining = prev.filter((g) => g.id !== id)
+      return prev.filter((g) => g.id !== id)
+    })
+    // Reassign servers from the removed group to the first remaining one.
+    setServers((prev) => {
+      const remaining = groups.filter((g) => g.id !== id)
+      if (remaining.length === 0) return prev
       const fallback = remaining[0].id
-      // Reassign servers from the removed group to the first remaining one.
-      setServers((servers) =>
-        servers.map((s) => (s.groupId === id ? { ...s, groupId: fallback } : s)),
+      return prev.map((s) =>
+        s.groupId === id ? { ...s, groupId: fallback } : s,
       )
-      return remaining
     })
   }
 
@@ -177,11 +186,12 @@ function App() {
 
   const deleteServer = (serverId: string) => {
     setServers((prev) => prev.filter((s) => s.id !== serverId))
-    setOpenIds((prev) => {
-      const next = prev.filter((id) => id !== serverId)
-      // If the deleted server was active, fall back to another open tab.
-      setActiveId((cur) => (cur === serverId ? next[next.length - 1] : cur))
-      return next
+    setOpenIds((prev) => prev.filter((id) => id !== serverId))
+    // If the deleted server was active, fall back to another open tab.
+    setActiveId((cur) => {
+      if (cur !== serverId) return cur
+      const remaining = openIds.filter((id) => id !== serverId)
+      return remaining[remaining.length - 1]
     })
     // Clean up any stored password/passphrase from the OS keychain.
     void deleteServerSecret(serverId).catch((e) =>

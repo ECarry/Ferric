@@ -5,9 +5,12 @@ import {
   Download,
   File as FileIcon,
   FolderClosed,
+  FolderPlus,
   Home,
   Loader2,
+  Pencil,
   RefreshCw,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react'
@@ -18,6 +21,21 @@ import { formatAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import {
   onDownloadProgress,
   onUploadProgress,
   sftpCancel,
@@ -25,6 +43,9 @@ import {
   sftpDownloadDir,
   sftpHome,
   sftpList,
+  sftpMkdir,
+  sftpRemove,
+  sftpRename,
   sftpUpload,
 } from '@/lib/sftp'
 
@@ -65,6 +86,15 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   } | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [promptDialog, setPromptDialog] = useState<{
+    title: string
+    label: string
+    initialValue: string
+    showInput: boolean
+    onConfirm: (value: string) => Promise<void>
+  } | null>(null)
+  const [promptValue, setPromptValue] = useState('')
+  const [promptBusy, setPromptBusy] = useState(false)
 
   const onCancel = async () => {
     setCancelling(true)
@@ -169,6 +199,74 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     }
   }
 
+  const onMkdir = () => {
+    setPromptValue('')
+    setPromptDialog({
+      title: t('newFolder'),
+      label: t('newFolderPrompt'),
+      initialValue: '',
+      showInput: true,
+      onConfirm: async (name) => {
+        await sftpMkdir(sessionId, joinPath(path, name))
+        await loadDir(path)
+      },
+    })
+  }
+
+  const onRename = () => {
+    if (!selectedFile) return
+    setPromptValue(selectedFile.name)
+    setPromptDialog({
+      title: t('rename'),
+      label: t('renamePrompt'),
+      initialValue: selectedFile.name,
+      showInput: true,
+      onConfirm: async (newName) => {
+        await sftpRename(
+          sessionId,
+          joinPath(path, selectedFile.name),
+          joinPath(path, newName),
+        )
+        await loadDir(path)
+      },
+    })
+  }
+
+  const onRemove = () => {
+    if (!selectedFile) return
+    setPromptDialog({
+      title: t('remove'),
+      label: t('confirmDelete', { name: selectedFile.name }),
+      initialValue: '',
+      showInput: false,
+      onConfirm: async () => {
+        await sftpRemove(
+          sessionId,
+          joinPath(path, selectedFile.name),
+          selectedFile.type === 'dir',
+        )
+        setSelected(null)
+        await loadDir(path)
+      },
+    })
+  }
+
+  const onPromptConfirm = async () => {
+    if (!promptDialog) return
+    const value = promptValue.trim()
+    if (!value) return
+    setPromptBusy(true)
+    setError(null)
+    try {
+      await promptDialog.onConfirm(value)
+      setPromptDialog(null)
+    } catch (e) {
+      setError(formatAppError(e, t))
+    } finally {
+      setPromptBusy(false)
+    }
+  }
+
   const segments = path.split('/').filter(Boolean)
 
   return (
@@ -231,6 +329,15 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         <Button
           variant="outline"
           size="sm"
+          disabled={!!busy}
+          onClick={onMkdir}
+        >
+          <FolderPlus className="h-4 w-4" />
+          {t('newFolder')}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           disabled={!selectedFile || !!busy}
           onClick={onDownload}
         >
@@ -240,66 +347,93 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       </div>
 
       {/* File table */}
-      <div className="flex-1 overflow-auto">
-        {error ? (
-          <div className="px-4 py-3 font-mono text-xs text-destructive">{error}</div>
-        ) : null}
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-background text-xs text-muted-foreground">
-            <tr className="border-b border-border">
-              <th className="px-4 py-2 text-left font-medium">{t('fileName')}</th>
-              <th className="px-4 py-2 text-right font-medium">{t('size')}</th>
-              <th className="px-4 py-2 text-left font-medium">{t('modified')}</th>
-              <th className="px-4 py-2 text-left font-medium">{t('permissions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {files.map((file) => (
-              <tr
-                key={file.name}
-                onClick={() => setSelected(file.name)}
-                onDoubleClick={() => {
-                  if (file.type === 'dir') {
-                    void loadDir(joinPath(path, file.name))
-                  }
-                }}
-                className={cn(
-                  'cursor-default border-b border-border/50 transition-colors',
-                  selected === file.name ? 'bg-accent' : 'hover:bg-muted',
-                )}
-              >
-                <td className="flex items-center gap-2 px-4 py-2">
-                  {file.type === 'dir' ? (
-                    <FolderClosed className="h-4 w-4 text-primary" />
-                  ) : (
-                    <FileIcon className="h-4 w-4 text-muted-foreground" />
+      <ContextMenu>
+        <ContextMenuTrigger render={<div className="flex-1 overflow-auto" />}>
+          {error ? (
+            <div className="px-4 py-3 font-mono text-xs text-destructive">{error}</div>
+          ) : null}
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-background text-xs text-muted-foreground">
+              <tr className="border-b border-border">
+                <th className="px-4 py-2 text-left font-medium">{t('fileName')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('size')}</th>
+                <th className="px-4 py-2 text-left font-medium">{t('modified')}</th>
+                <th className="px-4 py-2 text-left font-medium">{t('permissions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((file) => (
+                <tr
+                  key={file.name}
+                  onClick={() => setSelected(file.name)}
+                  onDoubleClick={() => {
+                    if (file.type === 'dir') {
+                      void loadDir(joinPath(path, file.name))
+                    }
+                  }}
+                  onContextMenu={() => setSelected(file.name)}
+                  className={cn(
+                    'cursor-default border-b border-border/50 transition-colors',
+                    selected === file.name ? 'bg-accent' : 'hover:bg-muted',
                   )}
-                  <span>{file.name}</span>
-                </td>
-                <td className="px-4 py-2 text-right text-muted-foreground">
-                  {file.type === 'dir' ? '-' : formatSize(file.size)}
-                </td>
-                <td className="px-4 py-2 text-muted-foreground">
-                  {file.modified || '-'}
-                </td>
-                <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                  {file.permissions}
-                </td>
-              </tr>
-            ))}
-            {!loading && files.length === 0 && !error ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-4 py-8 text-center text-sm text-muted-foreground"
                 >
-                  {t('emptyDirectory')}
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+                  <td className="flex items-center gap-2 px-4 py-2">
+                    {file.type === 'dir' ? (
+                      <FolderClosed className="h-4 w-4 text-primary" />
+                    ) : (
+                      <FileIcon className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span>{file.name}</span>
+                  </td>
+                  <td className="px-4 py-2 text-right text-muted-foreground">
+                    {file.type === 'dir' ? '-' : formatSize(file.size)}
+                  </td>
+                  <td className="px-4 py-2 text-muted-foreground">
+                    {file.modified || '-'}
+                  </td>
+                  <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                    {file.permissions}
+                  </td>
+                </tr>
+              ))}
+              {!loading && files.length === 0 && !error ? (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-4 py-8 text-center text-sm text-muted-foreground"
+                  >
+                    {t('emptyDirectory')}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onClick={onMkdir} disabled={!!busy}>
+            <FolderPlus className="h-4 w-4" />
+            {t('newFolder')}
+          </ContextMenuItem>
+          {selectedFile && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={onRename} disabled={!!busy}>
+                <Pencil className="h-4 w-4" />
+                {t('rename')}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={onDownload} disabled={!!busy}>
+                <Download className="h-4 w-4" />
+                {t('download')}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem variant="destructive" onClick={onRemove} disabled={!!busy}>
+                <Trash2 className="h-4 w-4" />
+                {t('remove')}
+              </ContextMenuItem>
+            </>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
 
       {/* Status bar */}
       <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
@@ -346,6 +480,40 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
           <span>{t('fileHint')}</span>
         )}
       </div>
+
+      {/* Prompt dialog for mkdir / rename / remove */}
+      <Dialog open={!!promptDialog} onOpenChange={(open) => { if (!open) setPromptDialog(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{promptDialog?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-muted-foreground">{promptDialog?.label}</label>
+            {promptDialog?.showInput && (
+              <Input
+                autoFocus
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void onPromptConfirm()
+                }}
+                placeholder={promptDialog?.initialValue}
+              />
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPromptDialog(null)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={() => void onPromptConfirm()}
+              disabled={promptBusy || (promptDialog?.showInput && !promptValue.trim())}
+            >
+              {t('confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

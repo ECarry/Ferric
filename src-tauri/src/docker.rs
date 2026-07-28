@@ -68,6 +68,20 @@ async fn exec_remote_cmd(config: &ConnectConfig, cmd: &str) -> Result<String, Ap
     // Propagate the structured connection/auth error untouched.
     let session = connect_and_auth(config).await.map_err(AppError::from)?;
 
+    let result = exec_on_session(&session, cmd).await?;
+
+    let _ = session
+        .disconnect(russh::Disconnect::ByApplication, "", "English")
+        .await;
+
+    Ok(result)
+}
+
+/// Run a command on an existing session and collect stdout/stderr/exit.
+async fn exec_on_session(
+    session: &russh::client::Handle<crate::ssh::Client>,
+    cmd: &str,
+) -> Result<String, AppError> {
     let mut channel = session
         .channel_open_session()
         .await
@@ -105,6 +119,25 @@ async fn exec_remote_cmd(config: &ConnectConfig, cmd: &str) -> Result<String, Ap
     Ok(stdout_str)
 }
 
+/// Run multiple commands on a single SSH session, returning each command's stdout.
+async fn exec_remote_batch(
+    config: &ConnectConfig,
+    cmds: &[&str],
+) -> Result<Vec<String>, AppError> {
+    let session = connect_and_auth(config).await.map_err(AppError::from)?;
+
+    let mut results = Vec::with_capacity(cmds.len());
+    for cmd in cmds {
+        results.push(exec_on_session(&session, cmd).await?);
+    }
+
+    let _ = session
+        .disconnect(russh::Disconnect::ByApplication, "", "English")
+        .await;
+
+    Ok(results)
+}
+
 fn is_valid_container_name(value: &str) -> bool {
     !value.is_empty()
         && value
@@ -115,7 +148,7 @@ fn is_valid_container_name(value: &str) -> bool {
 /// Quote one argument for the remote POSIX shell. This keeps user-provided
 /// image names and commands as Docker arguments rather than shell syntax.
 fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\\"'\\\"'"))
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 /// 1. 获取远程 Docker 版本信息
@@ -135,6 +168,53 @@ pub async fn get_remote_docker_version(config: ConnectConfig) -> Result<DockerIn
         os: parsed.os.unwrap_or_else(|| "Unknown".to_string()),
         arch: parsed.arch.unwrap_or_else(|| "Unknown".to_string()),
     })
+}
+
+/// 1+2. Fetch Docker version and container list in a single SSH session.
+#[tauri::command]
+pub async fn get_remote_docker_info(
+    config: ConnectConfig,
+    all: bool,
+) -> Result<(DockerInfo, Vec<DockerContainer>), AppError> {
+    let version_cmd = "docker version --format '{{json .Server}}'";
+    let all_flag = if all { "-a" } else { "" };
+    let ps_cmd = format!("docker ps {} --format '{{{{json .}}}}'", all_flag);
+
+    let results = exec_remote_batch(&config, &[version_cmd, &ps_cmd]).await?;
+    let raw_json = &results[0];
+    let raw_output = &results[1];
+
+    let parsed: DockerVersionRow = serde_json::from_str(raw_json.trim()).map_err(|e| {
+        AppError::new("errDockerParse").detail(format!("{e} (raw: {raw_json})"))
+    })?;
+
+    let info = DockerInfo {
+        version: parsed.version.unwrap_or_else(|| "Unknown".to_string()),
+        api_version: parsed.api_version.unwrap_or_else(|| "Unknown".to_string()),
+        os: parsed.os.unwrap_or_else(|| "Unknown".to_string()),
+        arch: parsed.arch.unwrap_or_else(|| "Unknown".to_string()),
+    };
+
+    let mut containers = Vec::new();
+    for line in raw_output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let row: DockerPsRow = serde_json::from_str(line).map_err(|e| {
+            AppError::new("errDockerParse").detail(format!("{e} (raw: {line})"))
+        })?;
+        containers.push(DockerContainer {
+            id: row.id,
+            image: row.image,
+            command: row.command,
+            created_at: row.created_at,
+            status: row.status,
+            names: row.names,
+        });
+    }
+
+    Ok((info, containers))
 }
 
 /// 2. 获取远程 Docker 容器列表
@@ -191,7 +271,7 @@ pub async fn control_remote_container(
         return Err(AppError::new("errDockerBadContainerId"));
     }
 
-    let cmd = format!("docker {} {}", action, container_id);
+    let cmd = format!("docker {} {}", action, shell_quote(&container_id));
     let _ = exec_remote_cmd(&config, &cmd).await?;
     Ok(())
 }
@@ -249,6 +329,23 @@ pub async fn rename_remote_container(
         shell_quote(&container_id),
         shell_quote(&name)
     );
+    let _ = exec_remote_cmd(&config, &cmd).await?;
+    Ok(())
+}
+
+/// 6. Remove a container (optionally force). Uses `docker rm` or `docker rm -f`.
+#[tauri::command]
+pub async fn remove_remote_container(
+    config: ConnectConfig,
+    container_id: String,
+    force: bool,
+) -> Result<(), AppError> {
+    if !is_valid_container_name(&container_id) {
+        return Err(AppError::new("errDockerBadContainerId"));
+    }
+
+    let flag = if force { " -f" } else { "" };
+    let cmd = format!("docker rm{} {}", flag, shell_quote(&container_id));
     let _ = exec_remote_cmd(&config, &cmd).await?;
     Ok(())
 }

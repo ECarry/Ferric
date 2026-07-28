@@ -121,8 +121,11 @@ export function ServerFormModal({
             <Field label={t('port')}>
               <Input
                 type="number"
+                min={1}
+                max={65535}
+                required
                 value={form.port}
-                onChange={(e) => set('port', Number(e.target.value))}
+                onChange={(e) => set('port', Math.min(65535, Math.max(1, Number(e.target.value) || 22)))}
               />
             </Field>
           </div>

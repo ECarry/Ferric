@@ -1,6 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { RemoteFile } from '@/types'
+import type { SshConnectConfig } from './ssh'
+
+export type SftpConnectConfig = SshConnectConfig
 
 export interface TransferProgress {
   /** SFTP session id the progress belongs to. */
@@ -22,16 +25,6 @@ export function onUploadProgress(
   cb: (progress: TransferProgress) => void,
 ): Promise<UnlistenFn> {
   return listen<TransferProgress>('sftp:upload-progress', (e) => cb(e.payload))
-}
-
-export interface SftpConnectConfig {
-  host: string
-  port: number
-  username: string
-  authType: 'password' | 'key'
-  password?: string
-  keyPath?: string
-  keyPassphrase?: string
 }
 
 /** Open an SFTP session over its own SSH connection. Returns the session id. */
