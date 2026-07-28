@@ -40,7 +40,7 @@
     "macOS": {
       "entitlements": "./Entitlements.plist",
       "infoPlist": "./Info.plist",
-      "signingIdentity": "-"
+      "signingIdentity": "Apple Development: seralien93@gmail.com (ATF9K2S9LK)"
     },
     "android": {
       "debugApplicationIdSuffix": ".debug"
