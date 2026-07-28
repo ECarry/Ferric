@@ -5,11 +5,13 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   publish-tauri:
     permissions:
       contents: write
-      workflows: write
     strategy:
       fail-fast: false
       max-parallel: 1
