@@ -9,7 +9,7 @@ use ssh::SshManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
+  let mut builder = tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .manage(SshManager::default())
     .manage(SftpManager::default())
@@ -22,7 +22,14 @@ pub fn run() {
         )?;
       }
       Ok(())
-    })
+    });
+
+  #[cfg(not(any(target_os = "android", target_os = "ios")))]
+  {
+    builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+  }
+
+  builder
     .invoke_handler(tauri::generate_handler![
       ssh::ssh_connect,
       ssh::ssh_send_input,
