@@ -9,6 +9,7 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
+      workflows: write
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -66,12 +67,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # 6. 使用 tag annotation 作为 release 说明
-      - name: Extract release notes from tag
-        id: tag-notes
+      # 6. 使用 tag annotation 作为 release 说明，并解析出 tag 指向的 commit
+      - name: Extract release notes and commit from tag
+        id: tag-meta
         run: |
           body=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
           printf '%s\n' "$body" > release-body.txt
+          echo "commit=$(git rev-parse --verify HEAD)" >> "$GITHUB_OUTPUT"
           cat release-body.txt
 
       # 7. 使用适配 Tauri v2 的 tauri-action
@@ -83,6 +85,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Ferric ${{ github.ref_name }}'
+          releaseCommitish: ${{ steps.tag-meta.outputs.commit }}
           body_path: release-body.txt
           releaseBody: 'See the assets below to download.'
           releaseDraft: false
