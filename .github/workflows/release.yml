@@ -79,16 +79,7 @@ jobs:
           echo "commit=$(git rev-parse --verify HEAD)" >> "$GITHUB_OUTPUT"
           cat release-body.txt
 
-      # 7. macOS 签名证书（可选，设置 APPLE_CERTIFICATE 和 APPLE_CERTIFICATE_PASSWORD secrets 后生效）
-      - name: Set up Apple signing certificate (macOS)
-        if: matrix.platform == 'macos-latest'
-        shell: bash
-        run: |
-          if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ]; then exit 0; fi
-          echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}" >> "$GITHUB_ENV"
-          echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" >> "$GITHUB_ENV"
-
-      # 8. 使用适配 Tauri v2 的 tauri-action
+      # 7. 使用适配 Tauri v2 的 tauri-action
       - name: Build and Publish Tauri App
         uses: tauri-apps/tauri-action@v0.5 # 👈 这里切换到了适配 v2 的 Action
         env:
