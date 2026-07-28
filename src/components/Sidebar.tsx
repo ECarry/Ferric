@@ -1,4 +1,6 @@
 import {
+  useCallback,
+  useEffect,
   useMemo,
   useState,
   type DragEvent,
@@ -18,6 +20,7 @@ import {
   Terminal,
   Trash2,
   X,
+  HelpCircle,
 } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
@@ -34,6 +37,16 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { getVersion } from '@tauri-apps/api/app'
+import { check as checkUpdate } from '@tauri-apps/plugin-updater'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 interface SidebarProps {
@@ -215,6 +228,7 @@ export function Sidebar({
               <SelectItem value="zh-CN" className='text-xs'>中文</SelectItem>
             </SelectContent>
           </Select>
+          <HelpDialog />
         </div>
       </div>
 
@@ -466,6 +480,100 @@ export function Sidebar({
         onCancel={() => setConfirm(null)}
       />
     </aside>
+  )
+}
+
+function HelpDialog() {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [version, setVersion] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [update, setUpdate] = useState<NonNullable<Awaited<ReturnType<typeof checkUpdate>>> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const handleCheck = useCallback(async () => {
+    setChecking(true)
+    setError(null)
+    setMessage(null)
+    setUpdate(null)
+    try {
+      const u = await checkUpdate()
+      if (u?.available) {
+        setUpdate(u)
+      }
+    } catch (e) {
+      console.error(e)
+      setError(t('updateError'))
+    } finally {
+      setChecking(false)
+    }
+  }, [t])
+
+  const handleInstall = async () => {
+    if (!update) return
+    setChecking(true)
+    setError(null)
+    setMessage(null)
+    try {
+      await update.downloadAndInstall()
+      setMessage(t('restartLater'))
+    } catch (e) {
+      console.error(e)
+      setError(t('updateError'))
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  useEffect(() => {
+    getVersion()
+      .then((v) => setVersion(v))
+      .catch(() => setVersion(''))
+  }, [])
+
+  useEffect(() => {
+    void handleCheck()
+  }, [handleCheck])
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button variant="ghost" size="icon" className="relative" aria-label={t('help')} onClick={() => setOpen(true)}>
+        <HelpCircle className="h-5 w-5" />
+        {update && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />}
+      </Button>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('help')}</DialogTitle>
+          <DialogDescription>{t('currentVersion', { version: version || '—' })}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          {update && (
+            <div>
+              <p>{t('updateAvailable', { version: update.version })}</p>
+              {update.body && (
+                <pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs">{update.body}</pre>
+              )}
+            </div>
+          )}
+          {!update && error && <p className="text-sm text-destructive">{error}</p>}
+          {!update && !error && message && <p className="text-sm text-green-600">{message}</p>}
+          {!update && !error && !message && (
+            <p className="text-sm text-muted-foreground">{t('updateNotAvailable')}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCheck} disabled={checking}>
+            {checking ? t('checkingForUpdates') : t('checkForUpdates')}
+          </Button>
+          {update && (
+            <Button onClick={handleInstall} disabled={checking}>
+              {checking ? t('downloadUpdate') : t('downloadAndInstall')}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
