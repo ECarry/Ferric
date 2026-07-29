@@ -327,12 +327,12 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded border border-border p-3">
-              <div className="text-xs text-muted-foreground">% Active time</div>
-              <div className="font-semibold">{selectedDisk.percent.toFixed(1)}%</div>
+              <div className="text-xs text-muted-foreground">Capacity</div>
+              <div className="font-semibold">{formatKb(selectedDisk.totalKb)}</div>
             </div>
             <div className="rounded border border-border p-3">
-              <div className="text-xs text-muted-foreground">Capacity</div>
-              <div className="font-semibold">-</div>
+              <div className="text-xs text-muted-foreground">Available</div>
+              <div className="font-semibold">{formatKb(selectedDisk.availableKb)}</div>
             </div>
           </div>
         </div>

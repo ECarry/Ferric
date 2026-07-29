@@ -18,6 +18,8 @@ export interface MemoryMetrics {
 export interface DiskMetrics {
   name: string
   percent: number
+  totalKb: number
+  availableKb: number
 }
 
 export interface NetworkMetrics {

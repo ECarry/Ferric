@@ -29,6 +29,8 @@ pub struct MemoryMetrics {
 pub struct DiskMetrics {
     pub name: String,
     pub percent: f64,
+    pub total_kb: u64,
+    pub available_kb: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -235,38 +237,32 @@ done < "$netr"
 
 : > "$diskf"
 
-if command -v findmnt >/dev/null 2>&1; then
-  findmnt -b -rn -o SOURCE,TARGET,FSTYPE,SIZE,AVAIL,USE% 2>/dev/null | awk '
+if command -v df >/dev/null 2>&1; then
+  df -k 2>/dev/null | awk '
   BEGIN { OFS="\t" }
-  {
-    src=$1; mp=$2; fstype=$3; total=$4; avail=$5; usep=$6
+  NR>1 {
+    src=$1; total=$2; used=$3; available=$4
+    usep=""
+    lastp=0
+    for (i=2; i<=NF; i++) {
+      if ($i ~ /%$/) {
+        if (usep=="") usep=$i
+        lastp=i
+      }
+    }
+    if (usep=="") next
+    gsub(/%/, "", usep)
+    mp=""
+    for (i=lastp+1; i<=NF; i++) mp=(mp ? mp " " : "") $i
     if (src !~ "^/dev/") next
     if (mp=="" || mp=="-") next
     if (seen[mp]++) next
-    if (fstype ~ /^(tmpfs|devtmpfs|squashfs|overlay|proc|sysfs|cgroup|cgroup2|devpts|securityfs|pstore|bpf|tracefs|debugfs|mqueue|hugetlbfs|fusectl|configfs|autofs|ramfs|binfmt_misc)$/) next
-    gsub(/%/, "", usep)
-    printf "DISK\t%s\t%s\t%s\n", src, mp, usep
+    printf "DISK\t%s\t%s\t%s\t%s\t%s\n", src, mp, usep, total, available
   }' > "$diskf"
 fi
 
-if [ ! -s "$diskf" ] && command -v df >/dev/null 2>&1; then
-  df -B1 -P 2>/dev/null | awk '
-  BEGIN { OFS="\t" }
-  NR>1 {
-    src=$1; total=$2; used=$3; avail=$4; usep=$5; mp=$6
-    if (src !~ "^/dev/") next
-    if (mp=="" || mp=="-") next
-    if (seen[mp]++) next
-    gsub(/%/, "", usep)
-    printf "DISK\t%s\t%s\t%s\n", src, mp, usep
-  }' >> "$diskf"
-fi
-
 if [ -s "$diskf" ]; then
-  while IFS="$(printf '\t')" read -r src mp usep; do
-    [ -n "$src" ] || continue
-    printf "DISK\t%s\t%s\t%s\n" "$src" "$mp" "$usep"
-  done < "$diskf"
+  cat "$diskf"
 fi
 PERF_EOF
 "###;
@@ -322,16 +318,20 @@ fn parse_stats_output(output: &str) -> PerformanceSnapshot {
                     tx_kb: tx / 1024.0,
                 });
             }
-            "DISK" if cols.len() >= 4 => {
+            "DISK" if cols.len() >= 6 => {
                 let mount = cols[2].trim();
                 if !mount.is_empty()
                     && mount != "-"
                     && seen_mounts.insert(mount.to_string())
                 {
                     let percent = cols[3].parse().unwrap_or(0.0);
+                    let total_kb = cols[4].parse().unwrap_or(0);
+                    let available_kb = cols[5].parse().unwrap_or(0);
                     disks.push(DiskMetrics {
                         name: mount.to_string(),
                         percent,
+                        total_kb,
+                        available_kb,
                     });
                 }
             }
