@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Container, FolderTree, Loader2, Pencil, Plug, Power, TerminalSquare, Zap } from 'lucide-react'
+import { Activity, Container, FolderTree, Loader2, Pencil, Plug, Power, TerminalSquare, Zap } from 'lucide-react'
 import type { ConnectionStatus, Server } from '@/types'
 import { cn } from '@/lib/utils'
 import { formatAppError } from '@/lib/error'
@@ -17,6 +17,7 @@ import { FileBrowser } from './FileBrowser'
 import { TerminalView } from './TerminalView'
 import { DockerView } from './docker/DockerView'
 import { PortForwardView } from './PortForwardView'
+import { PerformanceView } from './PerformanceView'
 
 interface MainPanelProps {
   server?: Server
@@ -195,6 +196,10 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
                 <Zap className="h-4 w-4" />
                 {t('portForward')}
               </TabsTrigger>
+              <TabsTrigger value="performance">
+                <Activity className="h-4 w-4" />
+                {t('performance')}
+              </TabsTrigger>
             </TabsList>
           </div>
           <TabsContent value="terminal" keepMounted className="min-h-0 data-[hidden]:hidden">
@@ -215,6 +220,9 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
           </TabsContent>
           <TabsContent value="forward" className="min-h-0">
             {sshConfig && <PortForwardView sshConfig={sshConfig} />}
+          </TabsContent>
+          <TabsContent value="performance" className="min-h-0">
+            <PerformanceView />
           </TabsContent>
         </Tabs>
       )}

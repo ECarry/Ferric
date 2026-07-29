@@ -184,5 +184,17 @@
   "forwardStatus_stopped": "已停止",
   "errForwardBind": "绑定本地端口 {{port}} 失败",
   "filterLogs": "筛选日志...",
-  "noMatchingLogs": "未找到匹配的日志"
+  "noMatchingLogs": "未找到匹配的日志",
+  "performance": "性能",
+  "searchByNameUserOrPid": "按名称、用户或 PID 搜索",
+  "cpu": "CPU",
+  "memory": "内存",
+  "disk": "磁盘",
+  "network": "网络",
+  "logicalProcessors": "{{count}} 个逻辑处理器",
+  "utilization": "利用率",
+  "processes": "进程",
+  "uptime": "运行时间",
+  "duration": "持续时间",
+  "seconds60": "60 秒"
 }

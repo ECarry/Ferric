@@ -184,5 +184,17 @@
   "forwardStatus_stopped": "Stopped",
   "errForwardBind": "Failed to bind local port {{port}}",
   "filterLogs": "Filter logs...",
-  "noMatchingLogs": "No matching logs"
+  "noMatchingLogs": "No matching logs",
+  "performance": "Performance",
+  "searchByNameUserOrPid": "Search by name, user, or PID",
+  "cpu": "CPU",
+  "memory": "Memory",
+  "disk": "Disk",
+  "network": "Network",
+  "logicalProcessors": "{{count}} logical processors",
+  "utilization": "Utilization",
+  "processes": "Processes",
+  "uptime": "Up time",
+  "duration": "Duration",
+  "seconds60": "60 seconds"
 }
