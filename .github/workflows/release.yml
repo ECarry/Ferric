@@ -75,13 +75,16 @@ jobs:
         shell: bash
         run: |
           body=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
-          printf '%s\n' "$body" > release-body.txt
           echo "commit=$(git rev-parse --verify HEAD)" >> "$GITHUB_OUTPUT"
-          cat release-body.txt
+          {
+            echo "body<<EOF"
+            echo "$body"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       # 7. 使用适配 Tauri v2 的 tauri-action
       - name: Build and Publish Tauri App
-        uses: tauri-apps/tauri-action@v0.5 # 👈 这里切换到了适配 v2 的 Action
+        uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -89,8 +92,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'Ferric ${{ github.ref_name }}'
           releaseCommitish: ${{ steps.tag-meta.outputs.commit }}
-          body_path: release-body.txt
-          releaseBody: 'See the assets below to download.'
+          releaseBody: ${{ steps.tag-meta.outputs.body }}
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
