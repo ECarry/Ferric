@@ -182,5 +182,7 @@
   "forwardStatus_active": "活跃",
   "forwardStatus_error": "错误",
   "forwardStatus_stopped": "已停止",
-  "errForwardBind": "绑定本地端口 {{port}} 失败"
+  "errForwardBind": "绑定本地端口 {{port}} 失败",
+  "filterLogs": "筛选日志...",
+  "noMatchingLogs": "未找到匹配的日志"
 }

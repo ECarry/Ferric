@@ -182,5 +182,7 @@
   "forwardStatus_active": "Active",
   "forwardStatus_error": "Error",
   "forwardStatus_stopped": "Stopped",
-  "errForwardBind": "Failed to bind local port {{port}}"
+  "errForwardBind": "Failed to bind local port {{port}}",
+  "filterLogs": "Filter logs...",
+  "noMatchingLogs": "No matching logs"
 }

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Clock, Loader2, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Clock, Loader2, RefreshCw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,6 +23,27 @@ interface ContainerLogsDialogProps {
 
 const TAIL_PRESETS = [50, 200, 500, 1000]
 
+const LOG_LEVELS = ['all', 'info', 'warn', 'error', 'debug'] as const
+type LogLevel = (typeof LOG_LEVELS)[number]
+
+const LEVEL_COLORS: Record<LogLevel | 'other', string> = {
+  all: 'text-[#e6e9f0]',
+  info: 'text-gray-400',
+  warn: 'text-yellow-400',
+  error: 'text-red-400',
+  debug: 'text-blue-400',
+  other: 'text-[#e6e9f0]',
+}
+
+function getLogLevel(line: string): LogLevel | 'other' {
+  const lower = line.toLowerCase()
+  if (lower.includes('error') || lower.includes('fatal') || lower.includes('critical')) return 'error'
+  if (lower.includes('warn')) return 'warn'
+  if (lower.includes('info')) return 'info'
+  if (lower.includes('debug')) return 'debug'
+  return 'other'
+}
+
 export function ContainerLogsDialog({
   container,
   sshConfig,
@@ -35,6 +56,8 @@ export function ContainerLogsDialog({
   const [tail, setTail] = useState(200)
   const [timestamps, setTimestamps] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [level, setLevel] = useState<LogLevel>('all')
   const logRef = useRef<HTMLPreElement>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
@@ -67,6 +90,15 @@ export function ContainerLogsDialog({
       if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [autoRefresh, fetchLogs])
+
+  const displayLines = useMemo(() => {
+    const query = filter.trim().toLowerCase()
+    return logs.split('\n').filter((line) => {
+      if (level !== 'all' && getLogLevel(line) !== level) return false
+      if (query && !line.toLowerCase().includes(query)) return false
+      return true
+    })
+  }, [logs, filter, level])
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -139,6 +171,32 @@ export function ContainerLogsDialog({
           </Button>
         </div>
 
+        {/* Log filter */}
+        <div className="flex flex-wrap items-center gap-3 pb-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder={t('filterLogs')}
+              className="h-8 pl-8 text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            {LOG_LEVELS.map((l) => (
+              <Button
+                key={l}
+                variant={level === l ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 px-2 text-xs capitalize"
+                onClick={() => setLevel(l)}
+              >
+                {l}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         {/* Log content */}
         <div className="min-h-0 flex-1 overflow-auto rounded-lg bg-[#0b0d11] p-5">
           {error ? (
@@ -147,11 +205,22 @@ export function ContainerLogsDialog({
             <pre
               ref={logRef}
               className={cn(
-                'whitespace-pre-wrap break-words font-mono text-sm leading-7 text-[#e6e9f0]',
+                'whitespace-pre-wrap break-words font-mono text-sm leading-7',
                 loading && 'opacity-50',
               )}
             >
-              {logs}
+              {displayLines.length === 0 ? (
+                <span className="text-gray-400">{t('noMatchingLogs')}</span>
+              ) : (
+                displayLines.map((line, i) => (
+                  <span
+                    key={i}
+                    className={cn('block', LEVEL_COLORS[getLogLevel(line)])}
+                  >
+                    {line || ' '}
+                  </span>
+                ))
+              )}
             </pre>
           )}
         </div>
