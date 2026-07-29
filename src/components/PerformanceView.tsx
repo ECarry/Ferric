@@ -87,7 +87,7 @@ function ResourceItem({ name, icon, value, active, onClick, data, colorClass }: 
 
 function MiniGraph({ label, data, colorClass }: { label: string; data: number[]; colorClass: string }) {
   return (
-    <div className="flex aspect-square w-full flex-col gap-1 rounded border border-border bg-card/50 p-2">
+    <div className="flex w-full flex-col gap-1 rounded border border-border bg-card/50 p-2 pb-0.5">
       <span className="text-[10px] text-muted-foreground">{label}</span>
       <div className="min-h-0 flex-1 w-full">
         <Sparkline data={data} className={colorClass} />
@@ -257,7 +257,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
             <div className="text-4xl font-semibold text-cyan-400">{cpuUtil.toFixed(1)}%</div>
           </div>
 
-          <div className="grid flex-1 grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+          <div className="grid grid-cols-8 gap-2">
             {cpuCores.map((data, i) => (
               <MiniGraph key={i} label={`CPU ${i}`} data={data} colorClass="text-cyan-400" />
             ))}
