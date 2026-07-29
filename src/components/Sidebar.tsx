@@ -212,56 +212,39 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex h-full w-72 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full w-72 flex-col border-r border-sidebar-border/60 bg-gradient-to-b from-sidebar to-background text-sidebar-foreground">
       {/* Brand */}
-      <div className="flex items-center gap-2 px-4 py-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <Terminal className="h-4 w-4 text-primary-foreground" />
+      <div className="flex items-center gap-3 border-b border-sidebar-border/60 px-4 py-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+          <Terminal className="h-5 w-5" />
         </div>
-        <div className="flex flex-1 items-center justify-between gap-2 leading-tight">
-          <div>
-            <div className="text-sm font-semibold">Ferric</div>
-            <div className="text-xs text-muted-foreground">Rust · Tauri Client</div>
-          </div>
-          <Select value={language} onValueChange={(value) => setLanguage(value as 'en' | 'zh-CN')}>
-            <SelectTrigger size="sm" className="h-7 w-20 text-xs" aria-label={t('language')}>
-              <SelectValue>{(value) => (value === 'zh-CN' ? '中文' : 'EN')}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en" className='text-xs'>EN</SelectItem>
-              <SelectItem value="zh-CN" className='text-xs'>中文</SelectItem>
-            </SelectContent>
-          </Select>
-          <HelpDialog />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative"
-            aria-label={t('terminalSettings')}
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings className="h-5 w-5" />
-          </Button>
-          <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-        </div>
+        <div className="text-base font-semibold tracking-tight">Ferric</div>
       </div>
 
       {/* Search */}
-      <div className="px-3 pb-3">
+      <div className="px-3 pb-3 pt-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('searchServers')}
-            className="pl-8"
+            className="h-9 rounded-full border-0 bg-muted pl-9 text-sm shadow-inner ring-1 ring-transparent transition focus:bg-background focus:ring-2 focus:ring-primary/20"
           />
         </div>
       </div>
 
+      {/* Add button */}
+      <div className="p-3">
+        <Button onClick={onAddServer} className="w-full rounded-full shadow-sm">
+          <Plus className="h-4 w-4" />
+          {t('addServer')}
+        </Button>
+      </div>
+
       {/* Groups header */}
-      <div className="flex items-center justify-between px-4 pb-1">
-        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      <div className="flex items-center justify-between px-3 pb-2 pt-1">
+        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           {t('groups')}
         </span>
         <Button
@@ -269,6 +252,7 @@ export function Sidebar({
           size="icon-xs"
           title={t('newGroup')}
           onClick={() => setAdding(true)}
+          className="h-6 w-6 rounded-md hover:bg-muted/60"
         >
           <FolderPlus className="h-3.5 w-3.5" />
         </Button>
@@ -314,7 +298,7 @@ export function Sidebar({
             <div
               key={group.id}
               className={cn(
-                'group/header relative mb-1 rounded-md',
+                'group/header relative mb-1.5 rounded-lg',
                 isDropTarget && 'ring-2 ring-primary/60 ring-inset',
               )}
               onDragOver={(e: DragEvent) => handleGroupDragOver(e, group.id)}
@@ -340,7 +324,7 @@ export function Sidebar({
                   setDropGroupRow(null)
                 }}
                 className={cn(
-                  'flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                  'flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground/80 transition-colors hover:bg-primary/10 hover:text-foreground',
                   !isEditing && 'cursor-grab active:cursor-grabbing',
                   draggingGroupId === group.id && 'opacity-50',
                 )}
@@ -372,7 +356,7 @@ export function Sidebar({
                         <ChevronDown className="h-3.5 w-3.5 shrink-0" />
                       )}
                       <Folder className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate uppercase tracking-wide">
+                      <span className="truncate uppercase tracking-wider">
                         {groupDisplayName(group, t)}
                       </span>
                     </button>
@@ -467,12 +451,32 @@ export function Sidebar({
         })}
       </div>
 
-      {/* Add button */}
-      <div className="border-t border-sidebar-border p-3">
-        <Button onClick={onAddServer} className="w-full">
-          <Plus className="h-4 w-4" />
-          {t('addServer')}
-        </Button>
+      {/* Bottom toolbar */}
+      <div className="border-t border-sidebar-border/60 p-3">
+        <div className="flex items-center justify-between">
+          <Select value={language} onValueChange={(value) => setLanguage(value as 'en' | 'zh-CN')}>
+            <SelectTrigger size="sm" className="h-8 w-24 border-0 bg-transparent text-xs" aria-label={t('language')}>
+              <SelectValue>{(value) => (value === 'zh-CN' ? '中文' : 'EN')}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="en" className='text-xs'>EN</SelectItem>
+              <SelectItem value="zh-CN" className='text-xs'>中文</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-0.5">
+            <HelpDialog />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative h-8 w-8"
+              aria-label={t('terminalSettings')}
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+            <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+          </div>
+        </div>
       </div>
 
       <ConfirmDialog
@@ -680,11 +684,11 @@ function ServerRow({
             onDoubleClick={onDoubleClick}
             title={t('serverHint')}
             className={cn(
-              'group flex w-full items-center gap-2 rounded-md px-2 py-2 pl-7 text-left transition-colors',
+              'group flex w-full items-center gap-3 rounded-lg px-2 py-2.5 pl-7 text-left transition-all',
               dragging && 'opacity-50',
               active
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'hover:bg-sidebar-accent/60',
+                ? 'bg-primary/10 text-foreground shadow-sm'
+                : 'hover:bg-muted/60 text-sidebar-foreground/80',
             )}
           />
         }
