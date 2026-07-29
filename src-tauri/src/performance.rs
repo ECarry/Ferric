@@ -117,7 +117,7 @@ case $cpu_cores in
 esac
 
 awk '
-/^cpu[^ ]/ {
+/^cpu[0-9 ]/ {
   idle=$5+$6
   total=0
   for (i=2; i<=NF; i++) total+=$i
@@ -140,7 +140,7 @@ interval=0.2
 sleep "$interval" 2>/dev/null || { interval=1; sleep 1; }
 
 awk '
-/^cpu[^ ]/ {
+/^cpu[0-9 ]/ {
   idle=$5+$6
   total=0
   for (i=2; i<=NF; i++) total+=$i
