@@ -159,5 +159,13 @@
   "timestamps": "Timestamps",
   "autoRefresh": "Auto refresh",
   "noLogs": "No log output",
-  "close": "Close"
+  "close": "Close",
+  "terminalSettings": "Terminal Settings",
+  "terminalSettingsHint": "Customize terminal appearance. Changes apply instantly to all terminals.",
+  "fontSize": "Font size",
+  "fontFamily": "Font family",
+  "colorTheme": "Color theme",
+  "cursorBlink": "Cursor blink",
+  "preview": "Preview",
+  "resetDefaults": "Reset to defaults"
 }

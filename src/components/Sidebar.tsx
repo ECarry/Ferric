@@ -21,6 +21,7 @@ import {
   Trash2,
   X,
   HelpCircle,
+  Settings,
 } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
@@ -49,6 +50,7 @@ import { getVersion } from '@tauri-apps/api/app'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check as checkUpdate } from '@tauri-apps/plugin-updater'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { SettingsDialog } from '@/components/SettingsDialog'
 
 interface SidebarProps {
   groups: ServerGroup[]
@@ -103,6 +105,7 @@ export function Sidebar({
   const [confirm, setConfirm] = useState<
     { kind: 'server' | 'group'; id: string; name: string } | null
   >(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const doConfirmDelete = () => {
     if (!confirm) return
@@ -230,6 +233,16 @@ export function Sidebar({
             </SelectContent>
           </Select>
           <HelpDialog />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            aria-label={t('terminalSettings')}
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings className="h-5 w-5" />
+          </Button>
+          <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         </div>
       </div>
 

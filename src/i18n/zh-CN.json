@@ -159,5 +159,13 @@
   "timestamps": "时间戳",
   "autoRefresh": "自动刷新",
   "noLogs": "暂无日志输出",
-  "close": "关闭"
+  "close": "关闭",
+  "terminalSettings": "终端设置",
+  "terminalSettingsHint": "自定义终端外观。更改将即时应用到所有终端。",
+  "fontSize": "字体大小",
+  "fontFamily": "字体",
+  "colorTheme": "配色主题",
+  "cursorBlink": "光标闪烁",
+  "preview": "预览",
+  "resetDefaults": "恢复默认"
 }
