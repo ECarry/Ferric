@@ -225,7 +225,7 @@ FNR==NR {
   txv=($3-tx[nic])/s
   if (rxv<0) rxv=0
   if (txv<0) txv=0
-  printf "NETWORK\t%s\t%.0f\t%.0f\n", nic, rxv, txv
+  printf "%s\t%.0f\t%.0f\n", nic, rxv, txv
 }' "$net1" "$net2" > "$netr"
 
 while IFS="$(printf '\t')" read -r nic rx tx; do

@@ -113,7 +113,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
   const [cpuCores, setCpuCores] = useState<number[][]>([])
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [diskHistory, setDiskHistory] = useState<Record<string, number[]>>({})
+  const [diskAvailableHistory, setDiskAvailableHistory] = useState<Record<string, number[]>>({})
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -134,11 +134,11 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
           return [...last.slice(-HISTORY + 1), v]
         }),
       )
-      setDiskHistory((prev) => {
+      setDiskAvailableHistory((prev) => {
         const next = { ...prev }
         data.disk.forEach((d) => {
           const arr = next[d.name] ?? []
-          next[d.name] = [...arr.slice(-HISTORY + 1), d.percent]
+          next[d.name] = [...arr.slice(-HISTORY + 1), d.availableKb]
         })
         return next
       })
@@ -211,7 +211,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         value: `${d.percent.toFixed(1)}%`,
         active: selected === d.name,
         onClick: () => setSelected(d.name),
-        data: diskHistory[d.name] ?? [],
+        data: diskAvailableHistory[d.name] ?? [],
         colorClass: 'text-green-400',
       })),
       {
@@ -225,7 +225,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         colorClass: 'text-rose-400',
       },
     ],
-    [selected, t, cpuUtil, memory, network, history, snapshot, diskHistory],
+    [selected, t, cpuUtil, memory, network, history, snapshot, diskAvailableHistory],
   )
 
   const renderMain = () => {
@@ -315,7 +315,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
     }
 
     if (selectedDisk) {
-      const data = diskHistory[selectedDisk.name] ?? []
+      const data = diskAvailableHistory[selectedDisk.name] ?? []
       return (
         <div className="space-y-4">
           <div className="flex items-end justify-between">
