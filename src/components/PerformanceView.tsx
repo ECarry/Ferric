@@ -8,7 +8,7 @@ import { formatAppError } from '@/lib/error'
 import { getPerformanceSnapshot } from '@/lib/performance'
 import type { SshConnectConfig } from '@/lib/ssh'
 
-type ResourceId = 'cpu' | 'memory' | 'disk' | 'network'
+type ResourceId = string
 
 const HISTORY = 60
 
@@ -113,6 +113,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
   const [cpuCores, setCpuCores] = useState<number[][]>([])
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [diskHistory, setDiskHistory] = useState<Record<string, number[]>>({})
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -133,6 +134,14 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
           return [...last.slice(-HISTORY + 1), v]
         }),
       )
+      setDiskHistory((prev) => {
+        const next = { ...prev }
+        data.disk.forEach((d) => {
+          const arr = next[d.name] ?? []
+          next[d.name] = [...arr.slice(-HISTORY + 1), d.percent]
+        })
+        return next
+      })
     } catch (e) {
       setError(formatAppError(e, t))
     } finally {
@@ -168,9 +177,10 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
   const processes = snapshot?.cpu.processes ?? 0
   const logical = snapshot?.cpu.logicalProcessors ?? 0
   const memory = snapshot?.memory.percent ?? 0
-  const disk = snapshot?.disk[0]?.percent ?? 0
   const network = (snapshot?.network ?? []).reduce((a, n) => a + n.rxKb + n.txKb, 0)
   const uptime = snapshot?.uptime ?? 0
+
+  const selectedDisk = useMemo(() => snapshot?.disk?.find((d) => d.name === selected), [snapshot, selected])
 
   const resources: ResourceItemProps[] = useMemo(
     () => [
@@ -194,16 +204,16 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         data: history.memory,
         colorClass: 'text-violet-400',
       },
-      {
-        id: 'disk',
-        name: t('disk'),
+      ...(snapshot?.disk ?? []).map((d) => ({
+        id: d.name,
+        name: d.name,
         icon: <HardDrive className="h-5 w-5" />,
-        value: `${disk.toFixed(1)}%`,
-        active: selected === 'disk',
-        onClick: () => setSelected('disk'),
-        data: history.disk,
+        value: `${d.percent.toFixed(1)}%`,
+        active: selected === d.name,
+        onClick: () => setSelected(d.name),
+        data: diskHistory[d.name] ?? [],
         colorClass: 'text-green-400',
-      },
+      })),
       {
         id: 'network',
         name: t('network'),
@@ -215,7 +225,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         colorClass: 'text-rose-400',
       },
     ],
-    [selected, t, cpuUtil, memory, disk, network, history],
+    [selected, t, cpuUtil, memory, network, history, snapshot, diskHistory],
   )
 
   const renderMain = () => {
@@ -304,17 +314,26 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
       )
     }
 
-    if (selected === 'disk' && snapshot) {
+    if (selectedDisk) {
+      const data = diskHistory[selectedDisk.name] ?? []
       return (
         <div className="space-y-4">
-          <h3 className="text-3xl font-semibold">{t('disk')}</h3>
-          <div className="flex flex-col gap-2">
-            {snapshot.disk.map((d) => (
-              <div key={d.name} className="flex items-center justify-between rounded border border-border p-3">
-                <span className="font-mono text-sm">{d.name}</span>
-                <span className="font-semibold">{d.percent.toFixed(1)}%</span>
-              </div>
-            ))}
+          <div className="flex items-end justify-between">
+            <h3 className="truncate text-3xl font-semibold">{selectedDisk.name}</h3>
+            <div className="text-4xl font-semibold text-green-400">{selectedDisk.percent.toFixed(1)}%</div>
+          </div>
+          <div className="h-40 w-full rounded border border-border p-3">
+            <Sparkline data={data} className="text-green-400" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded border border-border p-3">
+              <div className="text-xs text-muted-foreground">% Active time</div>
+              <div className="font-semibold">{selectedDisk.percent.toFixed(1)}%</div>
+            </div>
+            <div className="rounded border border-border p-3">
+              <div className="text-xs text-muted-foreground">Capacity</div>
+              <div className="font-semibold">-</div>
+            </div>
           </div>
         </div>
       )
