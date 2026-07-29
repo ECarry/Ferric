@@ -4,6 +4,7 @@ mod ssh;
 mod store;
 mod docker;
 mod forward;
+mod performance;
 
 use tauri::Manager;
 use sftp::SftpManager;
@@ -69,6 +70,7 @@ pub fn run() {
       docker::rename_remote_container,
       docker::remove_remote_container,
       docker::get_remote_container_logs,
+      performance::get_performance_snapshot,
       forward::ssh_forward_start,
       forward::ssh_forward_stop,
       forward::ssh_forward_stop_all,

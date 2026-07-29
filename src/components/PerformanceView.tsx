@@ -1,32 +1,35 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Cpu, HardDrive, MemoryStick, Network, RefreshCw, Search } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Activity, Cpu, HardDrive, Loader2, MemoryStick, Network, RefreshCw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/i18n'
+import { formatAppError } from '@/lib/error'
+import { getPerformanceSnapshot } from '@/lib/performance'
+import type { SshConnectConfig } from '@/lib/ssh'
 
 type ResourceId = 'cpu' | 'memory' | 'disk' | 'network'
 
-const CORES = 24
-const HISTORY = 40
+const HISTORY = 60
 
-function formatUptime(ms: number) {
-  const sec = Math.floor(ms / 1000)
-  const s = sec % 60
+function formatUptime(sec: number) {
+  const s = Math.floor(sec % 60)
   const m = Math.floor((sec / 60) % 60)
   const h = Math.floor((sec / 3600) % 24)
   const d = Math.floor(sec / 86400)
   return `${d}:${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
-function randomLoad(max = 60) {
-  return Math.max(0, Math.min(100, Math.random() * max + 5 + Math.random() * 20))
+function formatKb(kb: number) {
+  if (kb > 1048576) return `${(kb / 1048576).toFixed(1)} GB`
+  if (kb > 1024) return `${(kb / 1024).toFixed(1)} MB`
+  return `${kb.toFixed(0)} KB`
 }
 
 function Sparkline({ data, className }: { data: number[]; className?: string }) {
   const max = Math.max(1, ...data)
   const width = 100
-  const height = 40
+  const height = 100
   const points = useMemo(() => {
     return data
       .map((v, i) => {
@@ -75,7 +78,7 @@ function ResourceItem({ name, icon, value, active, onClick, data, colorClass }: 
         <span className="truncate text-sm font-medium">{name}</span>
         <span className="text-xs opacity-80">{value}</span>
       </div>
-      <div className="h-8 w-16 shrink-0">
+      <div className="h-8 w-8 shrink-0">
         <Sparkline data={data} className={cn(active ? 'text-white/70' : colorClass)} />
       </div>
     </button>
@@ -84,54 +87,90 @@ function ResourceItem({ name, icon, value, active, onClick, data, colorClass }: 
 
 function MiniGraph({ label, data, colorClass }: { label: string; data: number[]; colorClass: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded border border-border bg-card/50 p-2">
+    <div className="flex aspect-square w-full flex-col gap-1 rounded border border-border bg-card/50 p-2">
       <span className="text-[10px] text-muted-foreground">{label}</span>
-      <div className="h-10 w-full">
+      <div className="min-h-0 flex-1 w-full">
         <Sparkline data={data} className={colorClass} />
       </div>
     </div>
   )
 }
 
-export function PerformanceView() {
+interface PerformanceViewProps {
+  sshConfig: SshConnectConfig
+}
+
+export function PerformanceView({ sshConfig }: PerformanceViewProps) {
   const { t } = useI18n()
   const [selected, setSelected] = useState<ResourceId>('cpu')
-  const [cpuData, setCpuData] = useState<number[][]>(() =>
-    Array.from({ length: CORES }, () => Array.from({ length: HISTORY }, () => randomLoad(30))),
-  )
-  const [cpuUtil, setCpuUtil] = useState(15.8)
-  const [processes, setProcesses] = useState(734)
-  const [memory, setMemory] = useState(44.9)
-  const [disk, setDisk] = useState(6.1)
-  const [network, setNetwork] = useState(0)
-  const startRef = useRef(0)
-  const [uptime, setUptime] = useState(0)
-  const [, setTick] = useState(0)
+  const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getPerformanceSnapshot>> | null>(null)
+  const [history, setHistory] = useState<Record<ResourceId, number[]>>({
+    cpu: [],
+    memory: [],
+    disk: [],
+    network: [],
+  })
+  const [cpuCores, setCpuCores] = useState<number[][]>([])
+  const [loading, setLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const refresh = () => {
-    setCpuData(Array.from({ length: CORES }, () => Array.from({ length: HISTORY }, () => randomLoad(40))))
-    setCpuUtil(Math.random() * 40 + 5)
-    setMemory(Math.random() * 50 + 20)
-    setDisk(Math.random() * 20)
-    setNetwork(Math.random() > 0.7 ? Math.random() * 500 : 0)
-    setProcesses(700 + Math.floor(Math.random() * 100))
-  }
-
-  useEffect(() => {
-    startRef.current = Date.now()
-    const interval = setInterval(() => {
-      setCpuData((prev) =>
-        prev.map((core) => {
-          const next = randomLoad(40)
-          return [...core.slice(1), next]
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await getPerformanceSnapshot(sshConfig)
+      setSnapshot(data)
+      setHistory((prev) => ({
+        cpu: [...prev.cpu.slice(-HISTORY + 1), data.cpu.utilization],
+        memory: [...prev.memory.slice(-HISTORY + 1), data.memory.percent],
+        disk: [...prev.disk.slice(-HISTORY + 1), data.disk[0]?.percent ?? 0],
+        network: [...prev.network.slice(-HISTORY + 1), data.network.reduce((a, n) => a + n.rxKb + n.txKb, 0)],
+      }))
+      setCpuCores((prev) =>
+        data.cpu.cores.map((v, i) => {
+          const last = prev[i] ?? []
+          return [...last.slice(-HISTORY + 1), v]
         }),
       )
-      setCpuUtil((prev) => Math.max(0, Math.min(100, prev + (Math.random() - 0.5) * 8)))
-      setUptime(Date.now() - startRef.current)
-      setTick((n) => n + 1)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
+    } catch (e) {
+      setError(formatAppError(e, t))
+    } finally {
+      setLoading(false)
+    }
+  }, [sshConfig, t])
+
+  useEffect(() => {
+    let active = true
+    let timeout: ReturnType<typeof setTimeout> | null = null
+    const run = async () => {
+      if (!active) return
+      await load()
+      if (active) timeout = setTimeout(run, 1000)
+    }
+    run()
+    return () => {
+      active = false
+      if (timeout) clearTimeout(timeout)
+    }
+  }, [load])
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      await load()
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [load])
+
+  const cpuUtil = snapshot?.cpu.utilization ?? 0
+  const processes = snapshot?.cpu.processes ?? 0
+  const logical = snapshot?.cpu.logicalProcessors ?? 0
+  const memory = snapshot?.memory.percent ?? 0
+  const disk = snapshot?.disk[0]?.percent ?? 0
+  const network = (snapshot?.network ?? []).reduce((a, n) => a + n.rxKb + n.txKb, 0)
+  const uptime = snapshot?.uptime ?? 0
 
   const resources: ResourceItemProps[] = useMemo(
     () => [
@@ -142,7 +181,7 @@ export function PerformanceView() {
         value: `${cpuUtil.toFixed(1)}%`,
         active: selected === 'cpu',
         onClick: () => setSelected('cpu'),
-        data: cpuData[0],
+        data: history.cpu,
         colorClass: 'text-cyan-400',
       },
       {
@@ -152,7 +191,7 @@ export function PerformanceView() {
         value: `${memory.toFixed(1)}%`,
         active: selected === 'memory',
         onClick: () => setSelected('memory'),
-        data: [memory, memory - 2, memory + 3, memory - 1, memory + 1],
+        data: history.memory,
         colorClass: 'text-violet-400',
       },
       {
@@ -162,37 +201,54 @@ export function PerformanceView() {
         value: `${disk.toFixed(1)}%`,
         active: selected === 'disk',
         onClick: () => setSelected('disk'),
-        data: [disk, disk + 1, disk - 0.5, disk, disk + 0.2],
+        data: history.disk,
         colorClass: 'text-green-400',
       },
       {
         id: 'network',
         name: t('network'),
         icon: <Network className="h-5 w-5" />,
-        value: network === 0 ? 'Zero KB/s' : `${network.toFixed(0)} KB/s`,
+        value: network === 0 ? 'Zero KB/s' : `${network.toFixed(1)} KB/s`,
         active: selected === 'network',
         onClick: () => setSelected('network'),
-        data: [network, network, network, network, network],
+        data: history.network,
         colorClass: 'text-rose-400',
       },
     ],
-    [selected, cpuUtil, memory, disk, network, cpuData, t],
+    [selected, t, cpuUtil, memory, disk, network, history],
   )
 
   const renderMain = () => {
+    if (loading && !snapshot) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="text-sm">{t('loadingContainers')}</span>
+        </div>
+      )
+    }
+
+    if (error) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+          <p className="max-w-md text-sm text-destructive">{error}</p>
+        </div>
+      )
+    }
+
     if (selected === 'cpu') {
       return (
         <>
           <div className="mb-4 flex items-end justify-between">
             <div>
               <h3 className="text-3xl font-semibold">{t('cpu')}</h3>
-              <p className="text-sm text-muted-foreground">{t('logicalProcessors', { count: CORES })}</p>
+              <p className="text-sm text-muted-foreground">{t('logicalProcessors', { count: logical })}</p>
             </div>
             <div className="text-4xl font-semibold text-cyan-400">{cpuUtil.toFixed(1)}%</div>
           </div>
 
           <div className="grid flex-1 grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
-            {cpuData.map((data, i) => (
+            {cpuCores.map((data, i) => (
               <MiniGraph key={i} label={`CPU ${i}`} data={data} colorClass="text-cyan-400" />
             ))}
           </div>
@@ -208,7 +264,7 @@ export function PerformanceView() {
             </div>
             <div>
               <div className="text-xs text-muted-foreground">{t('logicalProcessors')}</div>
-              <div className="font-semibold">{CORES}</div>
+              <div className="font-semibold">{logical}</div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">{t('uptime')}</div>
@@ -223,14 +279,71 @@ export function PerformanceView() {
       )
     }
 
-    const selectedResource = resources.find((r) => r.id === selected)
+    if (selected === 'memory' && snapshot) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-end justify-between">
+            <h3 className="text-3xl font-semibold">{t('memory')}</h3>
+            <div className="text-4xl font-semibold text-violet-400">{memory.toFixed(1)}%</div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded border border-border p-4">
+              <div className="text-xs text-muted-foreground">Total</div>
+              <div className="text-lg font-semibold">{formatKb(snapshot.memory.totalKb)}</div>
+            </div>
+            <div className="rounded border border-border p-4">
+              <div className="text-xs text-muted-foreground">Used</div>
+              <div className="text-lg font-semibold">{formatKb(snapshot.memory.usedKb)}</div>
+            </div>
+            <div className="rounded border border-border p-4">
+              <div className="text-xs text-muted-foreground">Free</div>
+              <div className="text-lg font-semibold">{formatKb(snapshot.memory.freeKb)}</div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    if (selected === 'disk' && snapshot) {
+      return (
+        <div className="space-y-4">
+          <h3 className="text-3xl font-semibold">{t('disk')}</h3>
+          <div className="flex flex-col gap-2">
+            {snapshot.disk.map((d) => (
+              <div key={d.name} className="flex items-center justify-between rounded border border-border p-3">
+                <span className="font-mono text-sm">{d.name}</span>
+                <span className="font-semibold">{d.percent.toFixed(1)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (selected === 'network' && snapshot) {
+      return (
+        <div className="space-y-4">
+          <h3 className="text-3xl font-semibold">{t('network')}</h3>
+          <div className="flex flex-col gap-2">
+            {snapshot.network.map((n) => (
+              <div key={n.name} className="flex items-center justify-between rounded border border-border p-3">
+                <span className="font-mono text-sm">{n.name}</span>
+                <div className="text-sm">
+                  <span className="text-green-400">↓ {n.rxKb.toFixed(1)} KB/s</span>
+                  <span className="mx-2 text-muted-foreground">/</span>
+                  <span className="text-rose-400">↑ {n.txKb.toFixed(1)} KB/s</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <Activity className="h-8 w-8 text-muted-foreground" />
-        <h3 className="text-xl font-semibold">{selectedResource?.name}</h3>
-        <p className="text-sm text-muted-foreground">
-          {selectedResource?.value} — {t('notConnected')}
-        </p>
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+        <Activity className="h-8 w-8" />
+        <span>{t('notConnected')}</span>
       </div>
     )
   }
@@ -248,8 +361,8 @@ export function PerformanceView() {
               className="h-8 w-48 pl-8 md:w-72"
             />
           </div>
-          <Button variant="outline" size="sm" onClick={refresh}>
-            <RefreshCw className="mr-1.5 h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={cn('mr-1.5 h-4 w-4', isRefreshing && 'animate-spin')} />
             {t('refresh')}
           </Button>
         </div>
