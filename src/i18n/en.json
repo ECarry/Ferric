@@ -167,5 +167,20 @@
   "colorTheme": "Color theme",
   "cursorBlink": "Cursor blink",
   "preview": "Preview",
-  "resetDefaults": "Reset to defaults"
+  "resetDefaults": "Reset to defaults",
+  "portForward": "Port Forward",
+  "localPort": "Local port",
+  "remoteHost": "Remote host",
+  "remotePort": "Remote port",
+  "addForward": "Add",
+  "noTunnels": "No active tunnels",
+  "forwardHint": "Forward a local port to a remote host through this SSH server (e.g. local 8080 -> remote 127.0.0.1:80).",
+  "localAddr": "Local address",
+  "remoteAddr": "Remote address",
+  "forwardInvalid": "Please fill in all fields with valid values",
+  "forwardStatus_starting": "Starting...",
+  "forwardStatus_active": "Active",
+  "forwardStatus_error": "Error",
+  "forwardStatus_stopped": "Stopped",
+  "errForwardBind": "Failed to bind local port {{port}}"
 }

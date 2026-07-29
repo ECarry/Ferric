@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Container, FolderTree, Loader2, Pencil, Plug, Power, TerminalSquare } from 'lucide-react'
+import { Container, FolderTree, Loader2, Pencil, Plug, Power, TerminalSquare, Zap } from 'lucide-react'
 import type { ConnectionStatus, Server } from '@/types'
 import { cn } from '@/lib/utils'
 import { formatAppError } from '@/lib/error'
@@ -16,6 +16,7 @@ import { sftpConnect, sftpDisconnect } from '@/lib/sftp'
 import { FileBrowser } from './FileBrowser'
 import { TerminalView } from './TerminalView'
 import { DockerView } from './docker/DockerView'
+import { PortForwardView } from './PortForwardView'
 
 interface MainPanelProps {
   server?: Server
@@ -190,6 +191,10 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
                 <Container className="h-4 w-4" />
                 {t('containers')}
               </TabsTrigger>
+              <TabsTrigger value="forward">
+                <Zap className="h-4 w-4" />
+                {t('portForward')}
+              </TabsTrigger>
             </TabsList>
           </div>
           <TabsContent value="terminal" keepMounted className="min-h-0 data-[hidden]:hidden">
@@ -207,6 +212,9 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
           </TabsContent>
           <TabsContent value="docker" className="min-h-0">
             {sshConfig && <DockerView sshConfig={sshConfig} />}
+          </TabsContent>
+          <TabsContent value="forward" className="min-h-0">
+            {sshConfig && <PortForwardView sshConfig={sshConfig} />}
           </TabsContent>
         </Tabs>
       )}

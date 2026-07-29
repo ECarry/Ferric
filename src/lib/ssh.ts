@@ -63,3 +63,48 @@ export async function onSshClosed(
     if (event.payload.id === id) cb()
   })
 }
+
+// ── Port Forwarding ──────────────────────────────────────────────
+
+export interface ForwardConfig {
+  config: SshConnectConfig
+  localPort: number
+  remoteHost: string
+  remotePort: number
+}
+
+export interface ForwardEvent {
+  id: string
+  event: 'started' | 'stopped' | 'connected' | 'disconnected' | 'error'
+  message?: string
+}
+
+/** Start a local port-forward tunnel. Returns the tunnel id. */
+export function sshForwardStart(config: ForwardConfig): Promise<string> {
+  return invoke<string>('ssh_forward_start', { config })
+}
+
+/** Stop a port-forward tunnel by its id. */
+export function sshForwardStop(id: string): Promise<void> {
+  return invoke('ssh_forward_stop', { id })
+}
+
+/** Stop all active tunnels. */
+export function sshForwardStopAll(): Promise<void> {
+  return invoke('ssh_forward_stop_all')
+}
+
+/** List active tunnel ids. */
+export function sshForwardList(): Promise<string[]> {
+  return invoke<string[]>('ssh_forward_list')
+}
+
+/** Subscribe to port-forward events for a specific tunnel id. */
+export async function onForwardEvent(
+  id: string,
+  cb: (event: ForwardEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<ForwardEvent>('ssh:forward-event', (e) => {
+    if (e.payload.id === id) cb(e.payload)
+  })
+}

@@ -3,10 +3,12 @@ mod sftp;
 mod ssh;
 mod store;
 mod docker;
+mod forward;
 
 use tauri::Manager;
 use sftp::SftpManager;
 use ssh::SshManager;
+use forward::ForwardManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -14,6 +16,7 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .manage(SshManager::default())
     .manage(SftpManager::default())
+    .manage(ForwardManager::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -66,6 +69,10 @@ pub fn run() {
       docker::rename_remote_container,
       docker::remove_remote_container,
       docker::get_remote_container_logs,
+      forward::ssh_forward_start,
+      forward::ssh_forward_stop,
+      forward::ssh_forward_stop_all,
+      forward::ssh_forward_list,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
