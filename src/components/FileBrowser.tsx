@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Trash2,
   Upload,
+  FolderUp,
   X,
 } from 'lucide-react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
@@ -47,6 +48,7 @@ import {
   sftpRemove,
   sftpRename,
   sftpUpload,
+  sftpUploadDir,
 } from '@/lib/sftp'
 
 interface FileBrowserProps {
@@ -153,6 +155,30 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     })
     try {
       await sftpUpload(sessionId, picked, joinPath(path, baseName(picked)))
+      await loadDir(path)
+    } catch (e) {
+      setError(formatAppError(e, t))
+    } finally {
+      unlisten()
+      setBusy(null)
+      setProgress(null)
+      setCancelling(false)
+    }
+  }
+
+  const onUploadFolder = async () => {
+    const picked = await openDialog({ multiple: false, directory: true })
+    if (typeof picked !== 'string') return
+    setBusy(t('uploadingFolder'))
+    setError(null)
+    setCancelling(false)
+    setProgress({ transferred: 0, total: 0 })
+    const unlisten = await onUploadProgress((p) => {
+      if (p.id === sessionId)
+        setProgress({ transferred: p.transferred, total: p.total })
+    })
+    try {
+      await sftpUploadDir(sessionId, picked, path)
       await loadDir(path)
     } catch (e) {
       setError(formatAppError(e, t))
@@ -325,6 +351,15 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         <Button variant="outline" size="sm" disabled={!!busy} onClick={onUpload}>
           <Upload className="h-4 w-4" />
           {t('upload')}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!!busy}
+          onClick={onUploadFolder}
+        >
+          <FolderUp className="h-4 w-4" />
+          {t('uploadFolder')}
         </Button>
         <Button
           variant="outline"

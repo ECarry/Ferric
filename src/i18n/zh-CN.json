@@ -61,6 +61,8 @@
   "homeDirectory": "主目录",
   "refresh": "刷新",
   "upload": "上传",
+  "uploadFolder": "上传文件夹",
+  "uploadingFolder": "正在上传文件夹...",
   "download": "下载",
   "fileName": "名称",
   "size": "大小",

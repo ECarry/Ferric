@@ -76,6 +76,19 @@ export function sftpUpload(
   return invoke('sftp_upload', { id, localPath, remotePath })
 }
 
+/**
+ * Recursively upload a local directory into `remotePath` (the remote parent
+ * directory). The local folder is recreated as a subdirectory named after its
+ * basename.
+ */
+export function sftpUploadDir(
+  id: string,
+  localPath: string,
+  remotePath: string,
+): Promise<void> {
+  return invoke('sftp_upload_dir', { id, localPath, remotePath })
+}
+
 /** Cancel an in-flight upload/download for the given session. */
 export function sftpCancel(id: string): Promise<void> {
   return invoke('sftp_cancel', { id })

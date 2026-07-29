@@ -422,6 +422,139 @@ pub async fn sftp_upload(
     Ok(())
 }
 
+/// Recursively upload a local directory to a remote path. The local folder
+/// is recreated as a subdirectory of `remote_path` named after its basename.
+/// Emits `sftp:upload-progress` events with aggregated `transferred`/`total`
+/// across every file in the tree.
+#[tauri::command]
+pub async fn sftp_upload_dir(
+    app: AppHandle,
+    state: State<'_, SftpManager>,
+    id: String,
+    local_path: String,
+    remote_path: String,
+) -> Result<(), AppError> {
+    use std::path::PathBuf;
+
+    let sftp = session_for(&state, &id)?;
+    let cancel = begin_transfer(&state, &id)?;
+
+    // Recreate the local folder as a subdirectory of the chosen remote parent.
+    let folder_name = std::path::Path::new(&local_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("upload")
+        .to_string();
+    let root = format!("{}/{}", remote_path.trim_end_matches('/'), folder_name);
+
+    // Walk the local tree iteratively: collect dirs to create, files to upload,
+    // and the total byte count for the progress bar.
+    let mut dirs: Vec<String> = vec![root.clone()];
+    let mut files: Vec<(PathBuf, String)> = Vec::new();
+    let mut total: u64 = 0;
+    let mut stack: Vec<(PathBuf, String)> = vec![(PathBuf::from(&local_path), root.clone())];
+
+    while let Some((ldir, rdir)) = stack.pop() {
+        let mut entries = tokio::fs::read_dir(&ldir)
+            .await
+            .map_err(|e| AppError::new("errSftpLocalFile").detail(e))?;
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| AppError::new("errSftpLocalFile").detail(e))?
+        {
+            let lpath = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let rpath = format!("{}/{}", rdir.trim_end_matches('/'), name);
+            let file_type = entry
+                .file_type()
+                .await
+                .map_err(|e| AppError::new("errSftpLocalFile").detail(e))?;
+            if file_type.is_dir() {
+                dirs.push(rpath.clone());
+                stack.push((lpath, rpath));
+            } else {
+                total += entry
+                    .metadata()
+                    .await
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                files.push((lpath, rpath));
+            }
+        }
+    }
+
+    // Create the remote directory skeleton first (preserves empty directories too).
+    for dir in &dirs {
+        // Best-effort: ignore "already exists" errors.
+        let _ = sftp.create_dir(dir).await;
+    }
+
+    let emit = |transferred: u64| {
+        let _ = app.emit(
+            "sftp:upload-progress",
+            TransferProgress {
+                id: id.clone(),
+                transferred,
+                total,
+            },
+        );
+    };
+
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut transferred: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    let mut cancelled = false;
+    emit(0);
+    'files: for (lpath, rpath) in files {
+        let mut local = tokio::fs::File::open(&lpath)
+            .await
+            .map_err(|e| AppError::new("errSftpLocalFile").detail(e))?;
+        let mut remote = sftp
+            .create(&rpath)
+            .await
+            .map_err(|e| AppError::new("errSftpCreate").detail(e))?;
+        loop {
+            if cancel.load(Ordering::SeqCst) {
+                cancelled = true;
+                break 'files;
+            }
+            let n = local
+                .read(&mut buf)
+                .await
+                .map_err(|e| AppError::new("errSftpRead").detail(e))?;
+            if n == 0 {
+                break;
+            }
+            remote
+                .write_all(&buf[..n])
+                .await
+                .map_err(|e| AppError::new("errSftpWrite").detail(e))?;
+            transferred += n as u64;
+            if last_emit.elapsed().as_millis() >= 100 {
+                last_emit = std::time::Instant::now();
+                emit(transferred);
+            }
+        }
+        remote
+            .flush()
+            .await
+            .map_err(|e| AppError::new("errSftpFlush").detail(e))?;
+        remote
+            .shutdown()
+            .await
+            .map_err(|e| AppError::new("errSftpFlush").detail(e))?;
+    }
+    if cancelled {
+        // Best-effort cleanup of the partially uploaded remote directory tree.
+        let _ = sftp.remove_dir(&root).await;
+        return Ok(());
+    }
+    emit(transferred);
+    Ok(())
+}
+
 /// Cancel an in-flight transfer (upload/download) for the given session.
 #[tauri::command]
 pub fn sftp_cancel(state: State<'_, SftpManager>, id: String) -> Result<(), AppError> {

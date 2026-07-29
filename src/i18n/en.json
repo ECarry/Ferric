@@ -61,6 +61,8 @@
   "homeDirectory": "Home directory",
   "refresh": "Refresh",
   "upload": "Upload",
+  "uploadFolder": "Upload Folder",
+  "uploadingFolder": "Uploading folder...",
   "download": "Download",
   "fileName": "Name",
   "size": "Size",
