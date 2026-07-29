@@ -333,6 +333,37 @@ pub async fn rename_remote_container(
     Ok(())
 }
 
+/// 7. Fetch container logs via `docker logs`. Returns the raw log output as a
+/// string. When `tail` is `None` all lines are returned; otherwise the last N
+/// lines. `timestamps` prepends an ISO-8601 timestamp to each line.
+#[tauri::command]
+pub async fn get_remote_container_logs(
+    config: ConnectConfig,
+    container_id: String,
+    tail: Option<u32>,
+    timestamps: bool,
+) -> Result<String, AppError> {
+    if !is_valid_container_name(&container_id) {
+        return Err(AppError::new("errDockerBadContainerId"));
+    }
+
+    // docker logs writes to both stdout and stderr, but exec_remote_cmd only
+    // returns stdout. Redirect stderr to stdout so we capture everything.
+    let mut cmd = String::from("{ docker logs");
+    if let Some(n) = tail {
+        cmd.push_str(&format!(" --tail {n}"));
+    }
+    if timestamps {
+        cmd.push_str(" --timestamps");
+    }
+    cmd.push(' ');
+    cmd.push_str(&shell_quote(&container_id));
+    cmd.push_str(" ; } 2>&1");
+
+    let output = exec_remote_cmd(&config, &cmd).await?;
+    Ok(output)
+}
+
 /// 6. Remove a container (optionally force). Uses `docker rm` or `docker rm -f`.
 #[tauri::command]
 pub async fn remove_remote_container(

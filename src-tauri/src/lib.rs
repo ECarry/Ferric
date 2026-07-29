@@ -64,6 +64,7 @@ pub fn run() {
       docker::create_remote_container,
       docker::rename_remote_container,
       docker::remove_remote_container,
+      docker::get_remote_container_logs,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

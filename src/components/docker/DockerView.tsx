@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, Square, Trash2 } from 'lucide-react'
+import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, ScrollText, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContainerFormModal } from '@/components/docker/ContainerFormModal'
+import { ContainerLogsDialog } from '@/components/docker/ContainerLogsDialog'
 import { cn } from '@/lib/utils'
 import { formatAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
@@ -36,6 +37,7 @@ export function DockerView({ sshConfig }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [formTarget, setFormTarget] = useState<DockerContainer | null | undefined>(undefined)
   const [deleteTarget, setDeleteTarget] = useState<DockerContainer | null>(null)
+  const [logsTarget, setLogsTarget] = useState<DockerContainer | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -217,6 +219,15 @@ export function DockerView({ sshConfig }: Props) {
                       <Button
                         variant="ghost"
                         size="icon-xs"
+                        title={t('viewLogs')}
+                        disabled={busy}
+                        onClick={() => setLogsTarget(c)}
+                      >
+                        <ScrollText className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
                         title={t('editContainer')}
                         disabled={busy}
                         onClick={() => setFormTarget(c)}
@@ -264,6 +275,14 @@ export function DockerView({ sshConfig }: Props) {
           initial={formTarget}
           onClose={() => setFormTarget(undefined)}
           onSave={onSaveContainer}
+        />
+      )}
+
+      {logsTarget && (
+        <ContainerLogsDialog
+          container={logsTarget}
+          sshConfig={sshConfig}
+          onClose={() => setLogsTarget(null)}
         />
       )}
 

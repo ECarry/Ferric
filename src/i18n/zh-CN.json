@@ -149,5 +149,12 @@
   "downloadComplete": "更新已下载，请重启应用以应用更新。",
   "restartApp": "立即重启应用",
   "restartAppLater": "稍后重启",
-  "restartError": "重启失败"
+  "restartError": "重启失败",
+  "viewLogs": "查看日志",
+  "containerLogs": "容器日志",
+  "tailLines": "行数：",
+  "timestamps": "时间戳",
+  "autoRefresh": "自动刷新",
+  "noLogs": "暂无日志输出",
+  "close": "关闭"
 }

@@ -149,5 +149,12 @@
   "downloadComplete": "Update downloaded. Restart to apply the update.",
   "restartApp": "Restart App",
   "restartAppLater": "Restart Later",
-  "restartError": "Failed to restart"
+  "restartError": "Failed to restart",
+  "viewLogs": "View logs",
+  "containerLogs": "Container logs",
+  "tailLines": "Lines:",
+  "timestamps": "Timestamps",
+  "autoRefresh": "Auto refresh",
+  "noLogs": "No log output",
+  "close": "Close"
 }

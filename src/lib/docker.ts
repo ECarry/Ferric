@@ -80,3 +80,18 @@ export function removeRemoteContainer(
 ): Promise<void> {
   return invoke<void>('remove_remote_container', { config, containerId, force })
 }
+
+/** 获取远程容器日志。tail 为行数限制，timestamps 是否显示时间戳。 */
+export function getRemoteContainerLogs(
+  config: SshConnectConfig,
+  containerId: string,
+  tail?: number,
+  timestamps?: boolean,
+): Promise<string> {
+  return invoke<string>('get_remote_container_logs', {
+    config,
+    containerId,
+    tail: tail ?? null,
+    timestamps: timestamps ?? false,
+  })
+}
