@@ -63,6 +63,7 @@
   "upload": "Upload",
   "uploadFolder": "Upload Folder",
   "uploadingFolder": "Uploading folder...",
+  "dragDropHint": "Drop to upload here",
   "download": "Download",
   "fileName": "Name",
   "size": "Size",

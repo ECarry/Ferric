@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowUp,
   ChevronRight,
@@ -16,6 +16,8 @@ import {
   X,
 } from 'lucide-react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
+import type { UnlistenFn } from '@tauri-apps/api/event'
 import type { RemoteFile } from '@/types'
 import { cn } from '@/lib/utils'
 import { formatAppError } from '@/lib/error'
@@ -97,6 +99,8 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   } | null>(null)
   const [promptValue, setPromptValue] = useState('')
   const [promptBusy, setPromptBusy] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const dragPathsRef = useRef<string[]>([])
 
   const onCancel = async () => {
     setCancelling(true)
@@ -293,6 +297,85 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     }
   }
 
+  // Track whether the drag overlay should be shown. Because Tauri fires
+  // `enter`/`over` on the whole webview, we use a ref on the file table
+  // container to test if the cursor is within our bounds.
+  const tableAreaRef = useRef<HTMLDivElement>(null)
+  const isDraggingOver = (pos: { x: number; y: number }) => {
+    const el = tableAreaRef.current
+    if (!el) return false
+    const rect = el.getBoundingClientRect()
+    return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom
+  }
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined
+    getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === 'enter' || event.payload.type === 'over') {
+        const pos = event.payload.position
+        if (isDraggingOver({ x: pos.x, y: pos.y })) {
+          setDragActive(true)
+          if (event.payload.type === 'enter') {
+            dragPathsRef.current = event.payload.paths
+          }
+        } else {
+          setDragActive(false)
+        }
+      } else if (event.payload.type === 'drop') {
+        const pos = event.payload.position
+        if (isDraggingOver({ x: pos.x, y: pos.y })) {
+          const paths = event.payload.paths
+          if (paths.length > 0) {
+            void onDropUpload(paths)
+          }
+        }
+        setDragActive(false)
+        dragPathsRef.current = []
+      } else if (event.payload.type === 'leave') {
+        setDragActive(false)
+        dragPathsRef.current = []
+      }
+    }).then((fn) => {
+      unlisten = fn
+    })
+    return () => {
+      unlisten?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, busy])
+
+  const onDropUpload = async (paths: string[]) => {
+    if (busy) return
+    setBusy(t('uploading'))
+    setError(null)
+    setCancelling(false)
+    setProgress({ transferred: 0, total: 0 })
+    const unlisten = await onUploadProgress((p) => {
+      if (p.id === sessionId)
+        setProgress({ transferred: p.transferred, total: p.total })
+    })
+    try {
+      for (const localPath of paths) {
+        // Heuristic: trailing slash or known directory check isn't available
+        // from the path alone. We attempt sftpUploadDir first; if it fails
+        // because the path is a file, fall back to sftpUpload.
+        try {
+          await sftpUploadDir(sessionId, localPath, path)
+        } catch {
+          await sftpUpload(sessionId, localPath, joinPath(path, baseName(localPath)))
+        }
+      }
+      await loadDir(path)
+    } catch (e) {
+      setError(formatAppError(e, t))
+    } finally {
+      unlisten()
+      setBusy(null)
+      setProgress(null)
+      setCancelling(false)
+    }
+  }
+
   const segments = path.split('/').filter(Boolean)
 
   return (
@@ -383,7 +466,15 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
 
       {/* File table */}
       <ContextMenu>
-        <ContextMenuTrigger render={<div className="flex-1 overflow-auto" />}>
+        <ContextMenuTrigger render={<div ref={tableAreaRef} className="relative flex-1 overflow-auto" />}>
+          {dragActive && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-primary/10 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-primary/50 bg-background/80 px-8 py-6">
+                <Upload className="h-8 w-8 text-primary" />
+                <p className="text-sm font-medium text-primary">{t('dragDropHint')}</p>
+              </div>
+            </div>
+          )}
           {error ? (
             <div className="px-4 py-3 font-mono text-xs text-destructive">{error}</div>
           ) : null}

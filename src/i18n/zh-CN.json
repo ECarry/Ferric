@@ -63,6 +63,7 @@
   "upload": "上传",
   "uploadFolder": "上传文件夹",
   "uploadingFolder": "正在上传文件夹...",
+  "dragDropHint": "拖放到此处上传",
   "download": "下载",
   "fileName": "名称",
   "size": "大小",
