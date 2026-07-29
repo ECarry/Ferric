@@ -9,6 +9,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
 import { useI18n } from '@/i18n'
 import {
   TERMINAL_THEMES,
@@ -54,6 +63,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   const theme = getTerminalTheme(settings.themeId)
 
+  const fontOptions = TERMINAL_FONT_FAMILIES.map((ff, i) => ({
+    value: ff,
+    label: ff.split(',')[0].replace(/['"]/g, '').trim() || 'System Mono',
+    key: i,
+  }))
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -86,12 +101,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               >
                 <Plus className="h-4 w-4" />
               </Button>
-              <input
-                type="range"
+              <Slider
                 min={8}
                 max={32}
+                step={1}
                 value={settings.fontSize}
-                onChange={(e) => update({ fontSize: Number(e.target.value) })}
+                onValueChange={(val) => update({ fontSize: val as number })}
                 className="flex-1"
               />
             </div>
@@ -100,17 +115,25 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {/* Font family */}
           <div className="space-y-2">
             <label className="text-sm font-medium">{t('fontFamily')}</label>
-            <select
+            <Select
               value={settings.fontFamily}
-              onChange={(e) => update({ fontFamily: e.target.value })}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onValueChange={(val) => update({ fontFamily: val as string })}
             >
-              {TERMINAL_FONT_FAMILIES.map((ff, i) => (
-                <option key={i} value={ff}>
-                  {ff.split(',')[0].replace(/['"]/g, '').trim() || 'System Mono'}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  {(value) =>
+                    fontOptions.find((o) => o.value === value)?.label ?? 'System Mono'
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {fontOptions.map((opt) => (
+                  <SelectItem key={opt.key} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Theme */}
@@ -145,20 +168,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {/* Cursor blink */}
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium">{t('cursorBlink')}</label>
-            <button
-              onClick={() => update({ cursorBlink: !settings.cursorBlink })}
-              className={cn(
-                'relative h-6 w-11 rounded-full transition-colors',
-                settings.cursorBlink ? 'bg-primary' : 'bg-muted',
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform',
-                  settings.cursorBlink ? 'translate-x-5' : 'translate-x-0.5',
-                )}
-              />
-            </button>
+            <Switch
+              checked={settings.cursorBlink}
+              onCheckedChange={(checked) => update({ cursorBlink: checked })}
+            />
           </div>
 
           {/* Preview */}
