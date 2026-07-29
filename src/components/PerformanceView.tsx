@@ -26,8 +26,8 @@ function formatKb(kb: number) {
   return `${kb.toFixed(0)} KB`
 }
 
-function Sparkline({ data, className }: { data: number[]; className?: string }) {
-  const max = Math.max(1, ...data)
+function Sparkline({ data, max: maxProp, className }: { data: number[]; max?: number; className?: string }) {
+  const max = maxProp ?? Math.max(1, ...data)
   const width = 100
   const height = 100
   const points = useMemo(() => {
@@ -62,9 +62,10 @@ interface ResourceItemProps {
   onClick: () => void
   data: number[]
   colorClass: string
+  max?: number
 }
 
-function ResourceItem({ name, icon, value, active, onClick, data, colorClass }: ResourceItemProps) {
+function ResourceItem({ name, icon, value, active, onClick, data, colorClass, max }: ResourceItemProps) {
   return (
     <button
       onClick={onClick}
@@ -79,7 +80,7 @@ function ResourceItem({ name, icon, value, active, onClick, data, colorClass }: 
         <span className="text-xs opacity-80">{value}</span>
       </div>
       <div className="h-8 w-8 shrink-0">
-        <Sparkline data={data} className={cn(active ? 'text-white/70' : colorClass)} />
+        <Sparkline data={data} max={max} className={cn(active ? 'text-white/70' : colorClass)} />
       </div>
     </button>
   )
@@ -90,7 +91,7 @@ function MiniGraph({ label, data, colorClass }: { label: string; data: number[];
     <div className="flex w-full flex-col gap-1 rounded border border-border bg-card/50 p-2 pb-0.5">
       <span className="text-[10px] text-muted-foreground">{label}</span>
       <div className="min-h-0 flex-1 w-full">
-        <Sparkline data={data} className={colorClass} />
+        <Sparkline data={data} max={100} className={colorClass} />
       </div>
     </div>
   )
@@ -193,6 +194,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         onClick: () => setSelected('cpu'),
         data: history.cpu,
         colorClass: 'text-cyan-400',
+        max: 100,
       },
       {
         id: 'memory',
@@ -203,6 +205,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         onClick: () => setSelected('memory'),
         data: history.memory,
         colorClass: 'text-violet-400',
+        max: 100,
       },
       ...(snapshot?.disk ?? []).map((d) => ({
         id: d.name,
