@@ -191,7 +191,7 @@
   "memory": "Memory",
   "disk": "Disk",
   "network": "Network",
-  "logicalProcessors": "{{count}} logical processors",
+  "logicalProcessors": "logical processors",
   "utilization": "Utilization",
   "processes": "Processes",
   "uptime": "Up time",

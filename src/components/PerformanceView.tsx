@@ -252,7 +252,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
           <div className="mb-4 flex items-end justify-between">
             <div>
               <h3 className="text-3xl font-semibold">{t('cpu')}</h3>
-              <p className="text-sm text-muted-foreground">{t('logicalProcessors', { count: logical })}</p>
+              <p className="text-sm text-muted-foreground">{logical} {t('logicalProcessors')}</p>
             </div>
             <div className="text-4xl font-semibold text-cyan-400">{cpuUtil.toFixed(1)}%</div>
           </div>
