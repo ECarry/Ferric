@@ -70,26 +70,26 @@ export function ContainerLogsDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex h-[80vh] max-w-4xl flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <span>{t('containerLogs')}</span>
-            <span className="font-mono text-sm font-normal text-muted-foreground">
+      <DialogContent className="m-0 flex h-screen w-screen max-w-none sm:max-w-none md:max-w-none flex-col rounded-none p-5">
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="flex w-full items-center gap-2">
+            <span className="shrink-0">{t('containerLogs')}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-sm font-normal text-muted-foreground">
               {container.names}
             </span>
           </DialogTitle>
         </DialogHeader>
 
         {/* Controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">{t('tailLines')}</span>
+        <div className="flex flex-wrap items-center gap-3 pb-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">{t('tailLines')}</span>
             {TAIL_PRESETS.map((n) => (
               <Button
                 key={n}
                 variant={tail === n ? 'default' : 'outline'}
                 size="sm"
-                className="h-7 px-2.5 text-xs"
+                className="h-8 px-3 text-sm"
                 onClick={() => setTail(n)}
               >
                 {n}
@@ -100,24 +100,24 @@ export function ContainerLogsDialog({
               min={1}
               value={tail}
               onChange={(e) => setTail(Math.max(1, Number(e.target.value) || 200))}
-              className="h-7 w-20 text-xs"
+              className="h-8 w-24 text-sm"
             />
           </div>
 
           <Button
             variant={timestamps ? 'default' : 'outline'}
             size="sm"
-            className="h-7 text-xs"
+            className="h-8 text-sm"
             onClick={() => setTimestamps((v) => !v)}
           >
-            <Clock className="mr-1 h-3.5 w-3.5" />
+            <Clock className="mr-1.5 h-4 w-4" />
             {t('timestamps')}
           </Button>
 
           <Button
             variant={autoRefresh ? 'default' : 'outline'}
             size="sm"
-            className="h-7 text-xs"
+            className="h-8 text-sm"
             onClick={() => setAutoRefresh((v) => !v)}
           >
             {t('autoRefresh')}
@@ -126,28 +126,28 @@ export function ContainerLogsDialog({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs"
+            className="h-8 text-sm"
             disabled={loading}
             onClick={() => void fetchLogs()}
           >
             {loading ? (
-              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
             ) : (
-              <RefreshCw className="mr-1 h-3.5 w-3.5" />
+              <RefreshCw className="mr-1.5 h-4 w-4" />
             )}
             {t('refresh')}
           </Button>
         </div>
 
         {/* Log content */}
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg bg-[#0b0d11] p-3">
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg bg-[#0b0d11] p-5">
           {error ? (
-            <p className="font-mono text-xs text-destructive">{error}</p>
+            <p className="font-mono text-sm text-destructive">{error}</p>
           ) : (
             <pre
               ref={logRef}
               className={cn(
-                'whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-[#e6e9f0]',
+                'whitespace-pre-wrap break-words font-mono text-sm leading-7 text-[#e6e9f0]',
                 loading && 'opacity-50',
               )}
             >
