@@ -79,7 +79,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const path = requestedPath ?? homeQuery.data ?? '/'
   const [selected, setSelected] = useState<string | null>(null)
   const directoryQuery = useSftpDirectory(sessionId, path)
-  const { mkdir, rename, remove } = useSftpMutations(sessionId, path)
+  const { mkdir, rename, remove, invalidateDirectory } = useSftpMutations(sessionId, path)
   const files = directoryQuery.data ?? []
   const loading = directoryQuery.isLoading || directoryQuery.isFetching
   const [busy, setBusy] = useState<string | null>(null)
@@ -133,7 +133,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     })
     try {
       await sftpUpload(sessionId, picked, joinPath(path, baseName(picked)))
-      navigate(path)
+      await invalidateDirectory()
     } catch (e) {
       setError(formatAppError(e, t))
     } finally {
@@ -157,7 +157,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     })
     try {
       await sftpUploadDir(sessionId, picked, path)
-      navigate(path)
+      await invalidateDirectory()
     } catch (e) {
       setError(formatAppError(e, t))
     } finally {
@@ -301,7 +301,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
           await sftpUpload(sessionId, localPath, joinPath(path, baseName(localPath)))
         }
       }
-      navigate(path)
+      await invalidateDirectory()
     } catch (e) {
       setError(formatAppError(e, t))
     } finally {
@@ -310,7 +310,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       setProgress(null)
       setCancelling(false)
     }
-  }, [busy, navigate, path, sessionId, t])
+  }, [busy, invalidateDirectory, path, sessionId, t])
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined
@@ -345,7 +345,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     return () => {
       unlisten?.()
     }
-  }, [busy, isDraggingOver, onDropUpload, path, sessionId, t])
+  }, [busy, invalidateDirectory, isDraggingOver, onDropUpload, path, sessionId, t])
 
   const segments = path.split('/').filter(Boolean)
 

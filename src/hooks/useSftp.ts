@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   sftpHome,
@@ -36,10 +37,12 @@ export function useSftpDirectory(sessionId: string, path: string) {
 
 export function useSftpMutations(sessionId: string, path: string) {
   const queryClient = useQueryClient()
-  const invalidateDirectory = () =>
-    queryClient.invalidateQueries({
+  const invalidateDirectory = useCallback(
+    () => queryClient.invalidateQueries({
       queryKey: sftpQueryKeys.directory(sessionId, path),
-    })
+    }),
+    [path, queryClient, sessionId],
+  )
 
   const mkdir = useMutation({
     mutationFn: (targetPath: string) => sftpMkdir(sessionId, targetPath),
@@ -58,5 +61,5 @@ export function useSftpMutations(sessionId: string, path: string) {
     onSuccess: invalidateDirectory,
   })
 
-  return { mkdir, rename, remove }
+  return { mkdir, rename, remove, invalidateDirectory }
 }

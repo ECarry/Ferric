@@ -1,15 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useAppConfig } from '@/hooks/useAppConfig'
 import { Sidebar } from '@/components/Sidebar'
 import { MainPanel } from '@/components/MainPanel'
 import { ServerFormModal } from '@/components/ServerFormModal'
-import { deleteServerSecret, loadConfig, saveConfig } from '@/lib/store'
+import { deleteServerSecret } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { ConnectionStatus, Server, ServerGroup } from '@/types'
 
 function App() {
-  const [servers, setServers] = useState<Server[]>([])
-  const [groups, setGroups] = useState<ServerGroup[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const { config, updateConfig, isLoading: configLoading, error: configError } = useAppConfig()
+  const servers = config?.servers ?? []
+  const groups = config?.groups ?? []
+  const updateServers = useCallback((update: (servers: Server[]) => Server[]) => {
+    updateConfig((current) => ({ ...current, servers: update(current.servers) }))
+  }, [updateConfig])
+  const updateGroups = useCallback((update: (groups: ServerGroup[]) => ServerGroup[]) => {
+    updateConfig((current) => ({ ...current, groups: update(current.groups) }))
+  }, [updateConfig])
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
   // Servers that have been opened at least once. Each keeps a persistent,
   // independently-connected MainPanel so switching tabs never disconnects.
@@ -21,35 +28,6 @@ function App() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Server | null>(null)
 
-  // Load persisted config on startup.
-  useEffect(() => {
-    loadConfig()
-      .then((cfg) => {
-        setServers(cfg.servers)
-        setGroups(cfg.groups)
-      })
-      .catch((err) => console.error('加载配置失败', err))
-      .finally(() => setLoaded(true))
-  }, [])
-
-  // Persist whenever servers or groups change (after the initial load).
-  // Debounced to avoid excessive I/O during rapid updates (e.g. drag-reorder).
-  const skipSave = useRef(true)
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => {
-    if (!loaded) return
-    if (skipSave.current) {
-      skipSave.current = false
-      return
-    }
-    clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      saveConfig({ servers, groups }).catch((err) =>
-        console.error('保存配置失败', err),
-      )
-    }, 500)
-    return () => clearTimeout(saveTimer.current)
-  }, [servers, groups, loaded])
 
   const handleStatusChange = useCallback(
     (id: string, status: ConnectionStatus) => {
@@ -72,9 +50,9 @@ function App() {
   const openServers = useMemo(
     () =>
       openIds
-        .map((id) => servers.find((s) => s.id === id))
+        .map((id) => config?.servers.find((s) => s.id === id))
         .filter((s): s is Server => Boolean(s)),
-    [openIds, servers],
+    [config?.servers, openIds],
   )
 
   const selectServer = (server: Server) => {
@@ -95,7 +73,7 @@ function App() {
   }
 
   const saveServer = (server: Server) => {
-    setServers((prev) => {
+    updateServers((prev) => {
       const exists = prev.some((s) => s.id === server.id)
       return exists
         ? prev.map((s) => (s.id === server.id ? server : s))
@@ -111,24 +89,24 @@ function App() {
   const addGroup = (name: string) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    setGroups((prev) => [...prev, { id: `g-${Date.now()}`, name: trimmed }])
+    updateGroups((prev) => [...prev, { id: `g-${Date.now()}`, name: trimmed }])
   }
 
   const renameGroup = (id: string, name: string) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    setGroups((prev) =>
+    updateGroups((prev) =>
       prev.map((g) => (g.id === id ? { ...g, name: trimmed } : g)),
     )
   }
 
   const deleteGroup = (id: string) => {
-    setGroups((prev) => {
+    updateGroups((prev) => {
       if (prev.length <= 1) return prev // keep at least one group
       return prev.filter((g) => g.id !== id)
     })
     // Reassign servers from the removed group to the first remaining one.
-    setServers((prev) => {
+    updateServers((prev) => {
       const remaining = groups.filter((g) => g.id !== id)
       if (remaining.length === 0) return prev
       const fallback = remaining[0].id
@@ -144,7 +122,7 @@ function App() {
     before: boolean,
   ) => {
     if (draggingId === targetId) return
-    setGroups((prev) => {
+    updateGroups((prev) => {
       const dragging = prev.find((g) => g.id === draggingId)
       if (!dragging) return prev
       const without = prev.filter((g) => g.id !== draggingId)
@@ -158,7 +136,7 @@ function App() {
   }
 
   const moveServer = (serverId: string, groupId: string) => {
-    setServers((prev) =>
+    updateServers((prev) =>
       prev.map((s) => (s.id === serverId ? { ...s, groupId } : s)),
     )
   }
@@ -169,7 +147,7 @@ function App() {
     before: boolean,
   ) => {
     if (draggingId === targetId) return
-    setServers((prev) => {
+    updateServers((prev) => {
       const dragging = prev.find((s) => s.id === draggingId)
       const target = prev.find((s) => s.id === targetId)
       if (!dragging || !target) return prev
@@ -185,7 +163,7 @@ function App() {
   }
 
   const deleteServer = (serverId: string) => {
-    setServers((prev) => prev.filter((s) => s.id !== serverId))
+    updateServers((prev) => prev.filter((s) => s.id !== serverId))
     setOpenIds((prev) => prev.filter((id) => id !== serverId))
     // If the deleted server was active, fall back to another open tab.
     setActiveId((cur) => {
@@ -197,6 +175,14 @@ function App() {
     void deleteServerSecret(serverId).catch((e) =>
       console.error('删除凭据失败', e),
     )
+  }
+
+  if (configLoading && !config) {
+    return <div className="flex h-screen items-center justify-center">Loading...</div>
+  }
+
+  if (configError && !config) {
+    return <div className="flex h-screen items-center justify-center text-destructive">Failed to load configuration.</div>
   }
 
   return (
