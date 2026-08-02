@@ -79,7 +79,8 @@ export function ContainerLogsDialog({
   }, [sshConfig, container.id, tail, timestamps, t])
 
   useEffect(() => {
-    void fetchLogs()
+    const timer = window.setTimeout(() => void fetchLogs(), 0)
+    return () => window.clearTimeout(timer)
   }, [fetchLogs])
 
   useEffect(() => {

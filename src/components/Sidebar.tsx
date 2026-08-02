@@ -474,7 +474,7 @@ export function Sidebar({
             >
               <Settings className="h-5 w-5" />
             </Button>
-            <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+            <SettingsDialog key={settingsOpen ? 'open' : 'closed'} open={settingsOpen} onOpenChange={setSettingsOpen} />
           </div>
         </div>
       </div>
@@ -577,7 +577,8 @@ function HelpDialog() {
   }, [])
 
   useEffect(() => {
-    void handleCheck()
+    const timer = window.setTimeout(() => void handleCheck(), 0)
+    return () => window.clearTimeout(timer)
   }, [handleCheck])
 
   return (

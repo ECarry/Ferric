@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { usePerformanceSnapshot } from '@/hooks/usePerformance'
 import { Activity, Cpu, HardDrive, Loader2, MemoryStick, Network, RefreshCw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/i18n'
 import { formatAppError } from '@/lib/error'
-import { getPerformanceSnapshot } from '@/lib/performance'
 import type { SshConnectConfig } from '@/lib/ssh'
 
 type ResourceId = string
-
-const HISTORY = 60
 
 function formatUptime(sec: number) {
   const s = Math.floor(sec % 60)
@@ -104,75 +102,21 @@ interface PerformanceViewProps {
 export function PerformanceView({ sshConfig }: PerformanceViewProps) {
   const { t } = useI18n()
   const [selected, setSelected] = useState<ResourceId>('cpu')
-  const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getPerformanceSnapshot>> | null>(null)
-  const [history, setHistory] = useState<Record<ResourceId, number[]>>({
-    cpu: [],
-    memory: [],
-    disk: [],
-    network: [],
-  })
-  const [cpuCores, setCpuCores] = useState<number[][]>([])
-  const [loading, setLoading] = useState(false)
+  const performanceQuery = usePerformanceSnapshot(sshConfig)
+  const snapshot = performanceQuery.data ?? null
+  const { cpu: cpuHistory, memory: memoryHistory, network: networkHistory, cpuCores, diskAvailable: diskAvailableHistory } = performanceQuery.history
+  const loading = performanceQuery.isLoading
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [diskAvailableHistory, setDiskAvailableHistory] = useState<Record<string, number[]>>({})
-  const [error, setError] = useState<string | null>(null)
+  const error = performanceQuery.error ? formatAppError(performanceQuery.error, t) : null
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await getPerformanceSnapshot(sshConfig)
-      setSnapshot(data)
-      setHistory((prev) => ({
-        cpu: [...prev.cpu.slice(-HISTORY + 1), data.cpu.utilization],
-        memory: [...prev.memory.slice(-HISTORY + 1), data.memory.percent],
-        disk: [...prev.disk.slice(-HISTORY + 1), data.disk[0]?.percent ?? 0],
-        network: [...prev.network.slice(-HISTORY + 1), data.network.reduce((a, n) => a + n.rxKb + n.txKb, 0)],
-      }))
-      setCpuCores((prev) =>
-        data.cpu.cores.map((v, i) => {
-          const last = prev[i] ?? []
-          return [...last.slice(-HISTORY + 1), v]
-        }),
-      )
-      setDiskAvailableHistory((prev) => {
-        const next = { ...prev }
-        data.disk.forEach((d) => {
-          const arr = next[d.name] ?? []
-          next[d.name] = [...arr.slice(-HISTORY + 1), d.availableKb]
-        })
-        return next
-      })
-    } catch (e) {
-      setError(formatAppError(e, t))
-    } finally {
-      setLoading(false)
-    }
-  }, [sshConfig, t])
-
-  useEffect(() => {
-    let active = true
-    let timeout: ReturnType<typeof setTimeout> | null = null
-    const run = async () => {
-      if (!active) return
-      await load()
-      if (active) timeout = setTimeout(run, 1000)
-    }
-    run()
-    return () => {
-      active = false
-      if (timeout) clearTimeout(timeout)
-    }
-  }, [load])
-
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      await load()
+      await performanceQuery.refetch()
     } finally {
       setIsRefreshing(false)
     }
-  }, [load])
+  }
 
   const cpuUtil = snapshot?.cpu.utilization ?? 0
   const processes = snapshot?.cpu.processes ?? 0
@@ -192,7 +136,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         value: `${cpuUtil.toFixed(1)}%`,
         active: selected === 'cpu',
         onClick: () => setSelected('cpu'),
-        data: history.cpu,
+        data: cpuHistory,
         colorClass: 'text-cyan-400',
         max: 100,
       },
@@ -203,7 +147,7 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         value: `${memory.toFixed(1)}%`,
         active: selected === 'memory',
         onClick: () => setSelected('memory'),
-        data: history.memory,
+        data: memoryHistory,
         colorClass: 'text-violet-400',
         max: 100,
       },
@@ -224,11 +168,11 @@ export function PerformanceView({ sshConfig }: PerformanceViewProps) {
         value: network === 0 ? 'Zero KB/s' : `${network.toFixed(1)} KB/s`,
         active: selected === 'network',
         onClick: () => setSelected('network'),
-        data: history.network,
+        data: networkHistory,
         colorClass: 'text-rose-400',
       },
     ],
-    [selected, t, cpuUtil, memory, network, history, snapshot, diskAvailableHistory],
+    [selected, t, cpuUtil, memory, network, snapshot, cpuHistory, memoryHistory, networkHistory, diskAvailableHistory],
   )
 
   const renderMain = () => {

@@ -38,6 +38,8 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
   const [error, setError] = useState<string | null>(null)
   const sessionRef = useRef<string | null>(null)
   const sftpRef = useRef<string | null>(null)
+  const serverIdRef = useRef<string | undefined>(server?.id)
+  const statusChangeRef = useRef(onStatusChange)
 
   const sshConfig = useMemo<SshConnectConfig | null>(() => {
     if (!server) return null
@@ -75,6 +77,11 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
     }
   }, [])
 
+  useEffect(() => {
+    serverIdRef.current = server?.id
+    statusChangeRef.current = onStatusChange
+  }, [server?.id, onStatusChange])
+
   // Report connection status upward so the sidebar can show a live indicator.
   useEffect(() => {
     if (server) onStatusChange?.(server.id, status)
@@ -83,9 +90,9 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
   // Notify parent this server is disconnected when the panel unmounts.
   useEffect(() => {
     return () => {
-      if (server) onStatusChange?.(server.id, 'disconnected')
+      const serverId = serverIdRef.current
+      if (serverId) statusChangeRef.current?.(serverId, 'disconnected')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Reflect backend-initiated disconnects (shell exit, network drop).
@@ -207,7 +214,7 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
           </TabsContent>
           <TabsContent value="sftp" className="min-h-0">
             {sftpId ? (
-              <FileBrowser sessionId={sftpId} />
+              <FileBrowser key={sftpId} sessionId={sftpId} />
             ) : (
               <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />

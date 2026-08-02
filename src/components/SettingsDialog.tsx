@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Minus, Plus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -40,9 +40,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     loadTerminalSettings(),
   )
 
-  useEffect(() => {
-    if (open) setSettings(loadTerminalSettings())
-  }, [open])
 
   const update = (patch: Partial<TerminalSettings>) => {
     const next = { ...settings, ...patch }

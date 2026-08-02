@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSftpDirectory, useSftpHome, useSftpMutations } from '@/hooks/useSftp'
 import {
   ArrowUp,
   ChevronRight,
@@ -18,7 +19,6 @@ import {
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
-import type { RemoteFile } from '@/types'
 import { cn } from '@/lib/utils'
 import { formatAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
@@ -44,11 +44,6 @@ import {
   sftpCancel,
   sftpDownload,
   sftpDownloadDir,
-  sftpHome,
-  sftpList,
-  sftpMkdir,
-  sftpRemove,
-  sftpRename,
   sftpUpload,
   sftpUploadDir,
 } from '@/lib/sftp'
@@ -79,10 +74,14 @@ function formatSize(bytes: number) {
 
 export function FileBrowser({ sessionId }: FileBrowserProps) {
   const { t } = useI18n()
-  const [path, setPath] = useState('/')
-  const [files, setFiles] = useState<RemoteFile[]>([])
+  const homeQuery = useSftpHome(sessionId)
+  const [requestedPath, setRequestedPath] = useState<string | null>(null)
+  const path = requestedPath ?? homeQuery.data ?? '/'
   const [selected, setSelected] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const directoryQuery = useSftpDirectory(sessionId, path)
+  const { mkdir, rename, remove } = useSftpMutations(sessionId, path)
+  const files = directoryQuery.data ?? []
+  const loading = directoryQuery.isLoading || directoryQuery.isFetching
   const [busy, setBusy] = useState<string | null>(null)
   const [progress, setProgress] = useState<{
     transferred: number
@@ -111,40 +110,15 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     }
   }
 
-  const loadDir = useCallback(
-    async (target: string) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const list = await sftpList(sessionId, target)
-        setFiles(list)
-        setPath(target)
-        setSelected(null)
-      } catch (e) {
-        setError(formatAppError(e, t))
-      } finally {
-        setLoading(false)
-      }
-    },
-    [sessionId, t],
-  )
-
-  // On session change, jump to the remote home directory.
-  useEffect(() => {
-    let cancelled = false
-    sftpHome(sessionId)
-      .then((home) => {
-        if (!cancelled) void loadDir(home || '/')
-      })
-      .catch(() => {
-        if (!cancelled) void loadDir('/')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [sessionId, loadDir])
+  const navigate = useCallback((target: string) => {
+    setRequestedPath(target)
+    setSelected(null)
+    setError(null)
+  }, [])
 
   const selectedFile = files.find((f) => f.name === selected) ?? null
+  const queryError = directoryQuery.error ? formatAppError(directoryQuery.error, t) : null
+  const visibleError = error ?? queryError
 
   const onUpload = async () => {
     const picked = await openDialog({ multiple: false, directory: false })
@@ -159,7 +133,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     })
     try {
       await sftpUpload(sessionId, picked, joinPath(path, baseName(picked)))
-      await loadDir(path)
+      navigate(path)
     } catch (e) {
       setError(formatAppError(e, t))
     } finally {
@@ -183,7 +157,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     })
     try {
       await sftpUploadDir(sessionId, picked, path)
-      await loadDir(path)
+      navigate(path)
     } catch (e) {
       setError(formatAppError(e, t))
     } finally {
@@ -237,8 +211,8 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       initialValue: '',
       showInput: true,
       onConfirm: async (name) => {
-        await sftpMkdir(sessionId, joinPath(path, name))
-        await loadDir(path)
+        await mkdir.mutateAsync(joinPath(path, name))
+        navigate(path)
       },
     })
   }
@@ -252,12 +226,11 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       initialValue: selectedFile.name,
       showInput: true,
       onConfirm: async (newName) => {
-        await sftpRename(
-          sessionId,
-          joinPath(path, selectedFile.name),
-          joinPath(path, newName),
-        )
-        await loadDir(path)
+        await rename.mutateAsync({
+          from: joinPath(path, selectedFile.name),
+          to: joinPath(path, newName),
+        })
+        navigate(path)
       },
     })
   }
@@ -270,13 +243,12 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       initialValue: '',
       showInput: false,
       onConfirm: async () => {
-        await sftpRemove(
-          sessionId,
-          joinPath(path, selectedFile.name),
-          selectedFile.type === 'dir',
-        )
+        await remove.mutateAsync({
+          targetPath: joinPath(path, selectedFile.name),
+          isDir: selectedFile.type === 'dir',
+        })
         setSelected(null)
-        await loadDir(path)
+        navigate(path)
       },
     })
   }
@@ -301,12 +273,44 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   // `enter`/`over` on the whole webview, we use a ref on the file table
   // container to test if the cursor is within our bounds.
   const tableAreaRef = useRef<HTMLDivElement>(null)
-  const isDraggingOver = (pos: { x: number; y: number }) => {
+  const isDraggingOver = useCallback((pos: { x: number; y: number }) => {
     const el = tableAreaRef.current
     if (!el) return false
     const rect = el.getBoundingClientRect()
     return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom
-  }
+  }, [])
+
+  const onDropUpload = useCallback(async (paths: string[]) => {
+    if (busy) return
+    setBusy(t('uploading'))
+    setError(null)
+    setCancelling(false)
+    setProgress({ transferred: 0, total: 0 })
+    const unlisten = await onUploadProgress((p) => {
+      if (p.id === sessionId)
+        setProgress({ transferred: p.transferred, total: p.total })
+    })
+    try {
+      for (const localPath of paths) {
+        // Heuristic: trailing slash or known directory check isn't available
+        // from the path alone. We attempt sftpUploadDir first; if it fails
+        // because the path is a file, fall back to sftpUpload.
+        try {
+          await sftpUploadDir(sessionId, localPath, path)
+        } catch {
+          await sftpUpload(sessionId, localPath, joinPath(path, baseName(localPath)))
+        }
+      }
+      navigate(path)
+    } catch (e) {
+      setError(formatAppError(e, t))
+    } finally {
+      unlisten()
+      setBusy(null)
+      setProgress(null)
+      setCancelling(false)
+    }
+  }, [busy, navigate, path, sessionId, t])
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined
@@ -341,40 +345,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     return () => {
       unlisten?.()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, busy])
-
-  const onDropUpload = async (paths: string[]) => {
-    if (busy) return
-    setBusy(t('uploading'))
-    setError(null)
-    setCancelling(false)
-    setProgress({ transferred: 0, total: 0 })
-    const unlisten = await onUploadProgress((p) => {
-      if (p.id === sessionId)
-        setProgress({ transferred: p.transferred, total: p.total })
-    })
-    try {
-      for (const localPath of paths) {
-        // Heuristic: trailing slash or known directory check isn't available
-        // from the path alone. We attempt sftpUploadDir first; if it fails
-        // because the path is a file, fall back to sftpUpload.
-        try {
-          await sftpUploadDir(sessionId, localPath, path)
-        } catch {
-          await sftpUpload(sessionId, localPath, joinPath(path, baseName(localPath)))
-        }
-      }
-      await loadDir(path)
-    } catch (e) {
-      setError(formatAppError(e, t))
-    } finally {
-      unlisten()
-      setBusy(null)
-      setProgress(null)
-      setCancelling(false)
-    }
-  }
+  }, [busy, isDraggingOver, onDropUpload, path, sessionId, t])
 
   const segments = path.split('/').filter(Boolean)
 
@@ -387,7 +358,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
           size="icon-sm"
           title={t('parentDirectory')}
           disabled={path === '/'}
-          onClick={() => void loadDir(parentPath(path))}
+          onClick={() => void navigate(parentPath(path))}
         >
           <ArrowUp className="h-4 w-4" />
         </Button>
@@ -395,14 +366,14 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
           variant="ghost"
           size="icon-sm"
           title={t('homeDirectory')}
-          onClick={() => sftpHome(sessionId).then((h) => loadDir(h || '/'))}
+          onClick={() => navigate(homeQuery.data || '/')}
         >
           <Home className="h-4 w-4" />
         </Button>
         <div className="flex flex-1 items-center gap-1 overflow-x-auto rounded-lg bg-muted px-3 py-1.5 text-sm">
           <button
             className="text-muted-foreground hover:text-foreground"
-            onClick={() => void loadDir('/')}
+            onClick={() => void navigate('/')}
           >
             /
           </button>
@@ -412,7 +383,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
               <span key={target} className="flex items-center gap-1">
                 <button
                   className="whitespace-nowrap hover:text-foreground"
-                  onClick={() => void loadDir(target)}
+                  onClick={() => void navigate(target)}
                 >
                   {seg}
                 </button>
@@ -427,7 +398,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
           variant="ghost"
           size="icon-sm"
           title={t('refresh')}
-          onClick={() => void loadDir(path)}
+          onClick={() => void navigate(path)}
         >
           <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
         </Button>
@@ -475,8 +446,8 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
               </div>
             </div>
           )}
-          {error ? (
-            <div className="px-4 py-3 font-mono text-xs text-destructive">{error}</div>
+          {visibleError ? (
+            <div className="px-4 py-3 font-mono text-xs text-destructive">{visibleError}</div>
           ) : null}
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-background text-xs text-muted-foreground">
@@ -494,7 +465,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
                   onClick={() => setSelected(file.name)}
                   onDoubleClick={() => {
                     if (file.type === 'dir') {
-                      void loadDir(joinPath(path, file.name))
+                      void navigate(joinPath(path, file.name))
                     }
                   }}
                   onContextMenu={() => setSelected(file.name)}
