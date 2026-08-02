@@ -24,13 +24,14 @@ interface MainPanelProps {
   server?: Server
   onEdit: () => void
   onStatusChange?: (id: string, status: ConnectionStatus) => void
+  active?: boolean
 }
 
 const statusColor: Record<ConnectionStatus, string> = {
   disconnected: 'bg-muted-foreground', connecting: 'bg-yellow-500', connected: 'bg-green-500', error: 'bg-destructive',
 }
 
-export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
+export function MainPanel({ server, onEdit, onStatusChange, active = true }: MainPanelProps) {
   const { t } = useI18n()
   const [tab, setTab] = useState('terminal')
   const [mountedTabs, setMountedTabs] = useState(() => new Set(['terminal']))
@@ -227,7 +228,7 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
             }
           >
           <TabsContent value="terminal" keepMounted className="min-h-0 data-[hidden]:hidden">
-            <TerminalView sessionId={sessionId} />
+            <TerminalView sessionId={sessionId} active={active} />
           </TabsContent>
           {mountedTabs.has('sftp') && (
             <TabsContent value="sftp" className="min-h-0">

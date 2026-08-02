@@ -220,6 +220,7 @@ function App() {
                 server={s}
                 onEdit={() => openEdit(s)}
                 onStatusChange={handleStatusChange}
+                active={s.id === activeId}
               />
             </div>
           ))

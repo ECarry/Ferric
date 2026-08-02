@@ -14,14 +14,16 @@ import {
 
 interface TerminalViewProps {
   sessionId: string
+  active?: boolean
 }
 
 const decoder = new TextDecoder()
 
-export function TerminalView({ sessionId }: TerminalViewProps) {
+export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const activeRef = useRef(active)
 
   // Create the terminal once per session.
   useEffect(() => {
@@ -67,22 +69,20 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     term.open(container)
     fit.fit()
 
-    // Remote shell output -> terminal
+    // Remote shell output -> terminal. Keep receiving output while hidden so no terminal history is lost.
     let unlisten: UnlistenFn | undefined
-    onSshData(sessionId, (bytes) => term.write(decoder.decode(bytes))).then(
-      (fn) => {
-        unlisten = fn
-      },
-    )
+    void onSshData(sessionId, (bytes) => term.write(decoder.decode(bytes))).then((fn) => {
+      unlisten = fn
+    })
 
-    // Terminal input -> remote shell
+    // Terminal input -> remote shell. Hidden terminals do not send input.
     const dataSub = term.onData((data) => {
-      void sshSendInput(sessionId, data)
+      if (activeRef.current) void sshSendInput(sessionId, data)
     })
 
     // Keep the PTY size in sync with the visible terminal.
     const syncSize = () => {
-      if (!container.clientWidth || !container.clientHeight) return
+      if (!activeRef.current || !container.clientWidth || !container.clientHeight) return
       fit.fit()
       void sshResize(sessionId, term.cols, term.rows)
     }
@@ -101,6 +101,10 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       fitRef.current = null
     }
   }, [sessionId])
+
+  useEffect(() => {
+    activeRef.current = active
+  }, [active])
 
   // Live-apply settings changes without recreating the terminal.
   useEffect(() => {
