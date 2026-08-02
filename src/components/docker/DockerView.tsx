@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useDockerInfo, useDockerMutations } from '@/hooks/useDocker'
 import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, ScrollText, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContainerFormModal } from '@/components/docker/ContainerFormModal'
@@ -7,13 +8,7 @@ import { cn } from '@/lib/utils'
 import { formatAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
 import {
-  controlRemoteContainer,
-  createRemoteContainer,
-  getRemoteDockerInfo,
-  removeRemoteContainer,
-  renameRemoteContainer,
   type DockerContainer,
-  type DockerInfo,
 } from '@/lib/docker'
 import type { SshConnectConfig } from '@/lib/ssh'
 import {
@@ -30,54 +25,41 @@ interface Props {
 
 export function DockerView({ sshConfig }: Props) {
   const { t } = useI18n()
-  const [info, setInfo] = useState<DockerInfo | null>(null)
-  const [containers, setContainers] = useState<DockerContainer[]>([])
-  const [loading, setLoading] = useState(true)
-  const [actingId, setActingId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [formTarget, setFormTarget] = useState<DockerContainer | null | undefined>(undefined)
   const [deleteTarget, setDeleteTarget] = useState<DockerContainer | null>(null)
   const [logsTarget, setLogsTarget] = useState<DockerContainer | null>(null)
-
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [verInfo, containerList] = await getRemoteDockerInfo(sshConfig, true)
-      setInfo(verInfo)
-      setContainers(containerList)
-    } catch (err) {
-      setError(formatAppError(err, t))
-    } finally {
-      setLoading(false)
-    }
-  }, [sshConfig, t])
+  const [actingId, setActingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const dockerQuery = useDockerInfo(sshConfig)
+  const { control, create, rename, remove } = useDockerMutations(sshConfig)
+  const info = dockerQuery.data?.[0] ?? null
+  const containers = dockerQuery.data?.[1] ?? []
+  const loading = dockerQuery.isLoading || dockerQuery.isFetching
+  const error = actionError ?? (dockerQuery.error ? formatAppError(dockerQuery.error, t) : null)
 
   const onControl = async (id: string, action: 'start' | 'stop' | 'restart') => {
     setActingId(id)
-    setError(null)
+    setActionError(null)
     try {
-      await controlRemoteContainer(sshConfig, id, action)
-      await loadData()
+      await control.mutateAsync({ containerId: id, action })
     } catch (err) {
-      setError(formatAppError(err, t))
+      setActionError(formatAppError(err, t))
     } finally {
       setActingId(null)
     }
   }
 
   const onSaveContainer = async (input: { name?: string; image: string; command?: string }) => {
-    setError(null)
+    setActionError(null)
     try {
       if (formTarget) {
-        await renameRemoteContainer(sshConfig, formTarget.id, input.name ?? '')
+        await rename.mutateAsync({ containerId: formTarget.id, name: input.name ?? '' })
       } else {
-        await createRemoteContainer(sshConfig, input)
+        await create.mutateAsync(input)
       }
-      await loadData()
     } catch (err) {
       const message = formatAppError(err, t)
-      setError(message)
+      setActionError(message)
       throw new Error(message, { cause: err })
     }
   }
@@ -85,24 +67,17 @@ export function DockerView({ sshConfig }: Props) {
   const onConfirmDelete = async () => {
     if (!deleteTarget) return
     setActingId(deleteTarget.id)
-    setError(null)
+    setActionError(null)
     try {
-      const running = deleteTarget.status.toLowerCase().includes('up')
-      await removeRemoteContainer(sshConfig, deleteTarget.id, running)
-      await loadData()
+      const force = deleteTarget.status.toLowerCase().includes('up')
+      await remove.mutateAsync({ containerId: deleteTarget.id, force })
     } catch (err) {
-      setError(formatAppError(err, t))
+      setActionError(formatAppError(err, t))
     } finally {
       setActingId(null)
       setDeleteTarget(null)
     }
   }
-
-  useEffect(() => {
-    // Initial data load on mount / sshConfig change is the intended behavior.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadData()
-  }, [loadData])
 
   return (
     <div className="flex h-full flex-col">
@@ -126,7 +101,7 @@ export function DockerView({ sshConfig }: Props) {
             variant="outline"
             size="sm"
             disabled={loading}
-            onClick={() => void loadData()}
+            onClick={() => void dockerQuery.refetch()}
           >
             {loading ? (
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
