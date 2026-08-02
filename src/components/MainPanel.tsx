@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Container, FolderTree, Loader2, Pencil, Plug, Power, TerminalSquare, Zap } from 'lucide-react'
 import type { ConnectionStatus, Server } from '@/types'
 import { cn } from '@/lib/utils'
@@ -13,11 +13,12 @@ import {
   type SshConnectConfig,
 } from '@/lib/ssh'
 import { sftpConnect, sftpDisconnect } from '@/lib/sftp'
-import { FileBrowser } from './FileBrowser'
 import { TerminalView } from './TerminalView'
-import { DockerView } from './docker/DockerView'
-import { PortForwardView } from './PortForwardView'
-import { PerformanceView } from './PerformanceView'
+
+const FileBrowser = lazy(() => import('./FileBrowser').then((module) => ({ default: module.FileBrowser })))
+const DockerView = lazy(() => import('./docker/DockerView').then((module) => ({ default: module.DockerView })))
+const PortForwardView = lazy(() => import('./PortForwardView').then((module) => ({ default: module.PortForwardView })))
+const PerformanceView = lazy(() => import('./PerformanceView').then((module) => ({ default: module.PerformanceView })))
 
 interface MainPanelProps {
   server?: Server
@@ -32,6 +33,7 @@ const statusColor: Record<ConnectionStatus, string> = {
 export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
   const { t } = useI18n()
   const [tab, setTab] = useState('terminal')
+  const [mountedTabs, setMountedTabs] = useState(() => new Set(['terminal']))
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [sftpId, setSftpId] = useState<string | null>(null)
@@ -184,7 +186,14 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
           onConnect={connect}
         />
       ) : (
-        <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
+        <Tabs
+          value={tab}
+          onValueChange={(value) => {
+            setTab(value)
+            setMountedTabs((current) => new Set(current).add(value))
+          }}
+          className="min-h-0 flex-1 gap-0"
+        >
           <div className="border-b border-border px-3 py-2">
             <TabsList variant="line">
               <TabsTrigger value="terminal">
@@ -209,28 +218,45 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
               </TabsTrigger>
             </TabsList>
           </div>
+          <Suspense
+            fallback={
+              <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t('loadingContainers')}
+              </div>
+            }
+          >
           <TabsContent value="terminal" keepMounted className="min-h-0 data-[hidden]:hidden">
             <TerminalView sessionId={sessionId} />
           </TabsContent>
-          <TabsContent value="sftp" className="min-h-0">
-            {sftpId ? (
-              <FileBrowser key={sftpId} sessionId={sftpId} />
-            ) : (
-              <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('establishingSftp')}
-              </div>
-            )}
-          </TabsContent>
-          <TabsContent value="docker" className="min-h-0">
-            {sshConfig && <DockerView sshConfig={sshConfig} />}
-          </TabsContent>
-          <TabsContent value="forward" className="min-h-0">
-            {sshConfig && <PortForwardView sshConfig={sshConfig} />}
-          </TabsContent>
-          <TabsContent value="performance" className="min-h-0">
-            {sshConfig && <PerformanceView sshConfig={sshConfig} active={tab === 'performance'} />}
-          </TabsContent>
+          {mountedTabs.has('sftp') && (
+            <TabsContent value="sftp" className="min-h-0">
+              {sftpId ? (
+                <FileBrowser key={sftpId} sessionId={sftpId} />
+              ) : (
+                <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('establishingSftp')}
+                </div>
+              )}
+            </TabsContent>
+          )}
+          {mountedTabs.has('docker') && (
+            <TabsContent value="docker" className="min-h-0">
+              {sshConfig && <DockerView sshConfig={sshConfig} />}
+            </TabsContent>
+          )}
+          {mountedTabs.has('forward') && (
+            <TabsContent value="forward" className="min-h-0">
+              {sshConfig && <PortForwardView sshConfig={sshConfig} />}
+            </TabsContent>
+          )}
+          {mountedTabs.has('performance') && (
+            <TabsContent value="performance" className="min-h-0">
+              {sshConfig && <PerformanceView sshConfig={sshConfig} active={tab === 'performance'} />}
+            </TabsContent>
+          )}
+          </Suspense>
         </Tabs>
       )}
     </div>
