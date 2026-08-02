@@ -229,7 +229,7 @@ export function MainPanel({ server, onEdit, onStatusChange }: MainPanelProps) {
             {sshConfig && <PortForwardView sshConfig={sshConfig} />}
           </TabsContent>
           <TabsContent value="performance" className="min-h-0">
-            {sshConfig && <PerformanceView sshConfig={sshConfig} />}
+            {sshConfig && <PerformanceView sshConfig={sshConfig} active={tab === 'performance'} />}
           </TabsContent>
         </Tabs>
       )}

@@ -48,18 +48,19 @@ function appendSnapshot(previous: PerformanceHistory, snapshot: PerformanceSnaps
   }
 }
 
-export function usePerformanceSnapshot(config: SshConnectConfig) {
+export function usePerformanceSnapshot(config: SshConnectConfig, enabled = true) {
   const [history, setHistory] = useState<PerformanceHistory>(emptyHistory)
 
   const query = useQuery({
     queryKey: ['performance', config.host, config.port, config.username],
+    enabled,
     queryFn: async () => {
       const snapshot = await getPerformanceSnapshot(config)
       setHistory((previous) => appendSnapshot(previous, snapshot))
       return snapshot
     },
     staleTime: 800,
-    refetchInterval: 1_000,
+    refetchInterval: enabled ? 1_000 : false,
     retry: 0,
   })
 

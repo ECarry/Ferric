@@ -97,12 +97,13 @@ function MiniGraph({ label, data, colorClass }: { label: string; data: number[];
 
 interface PerformanceViewProps {
   sshConfig: SshConnectConfig
+  active?: boolean
 }
 
-export function PerformanceView({ sshConfig }: PerformanceViewProps) {
+export function PerformanceView({ sshConfig, active = true }: PerformanceViewProps) {
   const { t } = useI18n()
   const [selected, setSelected] = useState<ResourceId>('cpu')
-  const performanceQuery = usePerformanceSnapshot(sshConfig)
+  const performanceQuery = usePerformanceSnapshot(sshConfig, active)
   const snapshot = performanceQuery.data ?? null
   const { cpu: cpuHistory, memory: memoryHistory, network: networkHistory, cpuCores, diskAvailable: diskAvailableHistory } = performanceQuery.history
   const loading = performanceQuery.isLoading
