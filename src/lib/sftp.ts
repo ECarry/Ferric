@@ -6,11 +6,15 @@ import type { SshConnectConfig } from './ssh'
 export type SftpConnectConfig = SshConnectConfig
 
 export interface TransferProgress {
-  /** SFTP session id the progress belongs to. */
-  id: string
+  transferId: string
+  sessionId: string
   transferred: number
   /** Total bytes, or 0 when unknown. */
   total: number
+}
+
+export function createTransferId(): string {
+  return crypto.randomUUID()
 }
 
 /** Subscribe to download progress events. Remember to call the returned unlisten. */
@@ -45,10 +49,11 @@ export function sftpList(id: string, path: string): Promise<RemoteFile[]> {
 /** Download a remote file to a local path. */
 export function sftpDownload(
   id: string,
+  transferId: string,
   remotePath: string,
   localPath: string,
 ): Promise<void> {
-  return invoke('sftp_download', { id, remotePath, localPath })
+  return invoke('sftp_download', { id, transferId, remotePath, localPath })
 }
 
 /**
@@ -57,11 +62,13 @@ export function sftpDownload(
  */
 export function sftpDownloadDir(
   id: string,
+  transferId: string,
   remotePath: string,
   localParentDir: string,
 ): Promise<void> {
   return invoke('sftp_download_dir', {
     id,
+    transferId,
     remotePath,
     localPath: localParentDir,
   })
@@ -70,10 +77,11 @@ export function sftpDownloadDir(
 /** Upload a local file to a remote path. */
 export function sftpUpload(
   id: string,
+  transferId: string,
   localPath: string,
   remotePath: string,
 ): Promise<void> {
-  return invoke('sftp_upload', { id, localPath, remotePath })
+  return invoke('sftp_upload', { id, transferId, localPath, remotePath })
 }
 
 /**
@@ -83,15 +91,16 @@ export function sftpUpload(
  */
 export function sftpUploadDir(
   id: string,
+  transferId: string,
   localPath: string,
   remotePath: string,
 ): Promise<void> {
-  return invoke('sftp_upload_dir', { id, localPath, remotePath })
+  return invoke('sftp_upload_dir', { id, transferId, localPath, remotePath })
 }
 
-/** Cancel an in-flight upload/download for the given session. */
-export function sftpCancel(id: string): Promise<void> {
-  return invoke('sftp_cancel', { id })
+/** Cancel one in-flight upload/download by its transfer ID. */
+export function sftpCancel(transferId: string): Promise<void> {
+  return invoke('sftp_cancel', { transferId })
 }
 
 /** Create a remote directory. */

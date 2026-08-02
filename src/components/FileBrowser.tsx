@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
+  createTransferId,
   onDownloadProgress,
   onUploadProgress,
   sftpCancel,
@@ -88,6 +89,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     total: number
   } | null>(null)
   const [cancelling, setCancelling] = useState(false)
+  const [activeTransferId, setActiveTransferId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [promptDialog, setPromptDialog] = useState<{
     title: string
@@ -104,7 +106,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const onCancel = async () => {
     setCancelling(true)
     try {
-      await sftpCancel(sessionId)
+      if (activeTransferId) await sftpCancel(activeTransferId)
     } catch (e) {
       console.error('取消传输失败', e)
     }
@@ -127,12 +129,14 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     setError(null)
     setCancelling(false)
     setProgress({ transferred: 0, total: 0 })
+    const transferId = createTransferId()
+    setActiveTransferId(transferId)
     const unlisten = await onUploadProgress((p) => {
-      if (p.id === sessionId)
+      if (p.transferId === transferId)
         setProgress({ transferred: p.transferred, total: p.total })
     })
     try {
-      await sftpUpload(sessionId, picked, joinPath(path, baseName(picked)))
+      await sftpUpload(sessionId, transferId, picked, joinPath(path, baseName(picked)))
       await invalidateDirectory()
     } catch (e) {
       setError(formatAppError(e, t))
@@ -141,6 +145,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       setBusy(null)
       setProgress(null)
       setCancelling(false)
+      setActiveTransferId(null)
     }
   }
 
@@ -151,12 +156,14 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     setError(null)
     setCancelling(false)
     setProgress({ transferred: 0, total: 0 })
+    const transferId = createTransferId()
+    setActiveTransferId(transferId)
     const unlisten = await onUploadProgress((p) => {
-      if (p.id === sessionId)
+      if (p.transferId === transferId)
         setProgress({ transferred: p.transferred, total: p.total })
     })
     try {
-      await sftpUploadDir(sessionId, picked, path)
+      await sftpUploadDir(sessionId, transferId, picked, path)
       await invalidateDirectory()
     } catch (e) {
       setError(formatAppError(e, t))
@@ -165,6 +172,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       setBusy(null)
       setProgress(null)
       setCancelling(false)
+      setActiveTransferId(null)
     }
   }
 
@@ -183,15 +191,17 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     setError(null)
     setCancelling(false)
     setProgress({ transferred: 0, total: isDir ? 0 : selectedFile.size })
+    const transferId = createTransferId()
+    setActiveTransferId(transferId)
     const unlisten = await onDownloadProgress((p) => {
-      if (p.id === sessionId)
+      if (p.transferId === transferId)
         setProgress({ transferred: p.transferred, total: p.total })
     })
     try {
       if (isDir) {
-        await sftpDownloadDir(sessionId, remotePath, dest)
+        await sftpDownloadDir(sessionId, transferId, remotePath, dest)
       } else {
-        await sftpDownload(sessionId, remotePath, dest)
+        await sftpDownload(sessionId, transferId, remotePath, dest)
       }
     } catch (e) {
       setError(formatAppError(e, t))
@@ -200,6 +210,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       setBusy(null)
       setProgress(null)
       setCancelling(false)
+      setActiveTransferId(null)
     }
   }
 
@@ -286,8 +297,10 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     setError(null)
     setCancelling(false)
     setProgress({ transferred: 0, total: 0 })
+    const transferId = createTransferId()
+    setActiveTransferId(transferId)
     const unlisten = await onUploadProgress((p) => {
-      if (p.id === sessionId)
+      if (p.transferId === transferId)
         setProgress({ transferred: p.transferred, total: p.total })
     })
     try {
@@ -296,9 +309,9 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         // from the path alone. We attempt sftpUploadDir first; if it fails
         // because the path is a file, fall back to sftpUpload.
         try {
-          await sftpUploadDir(sessionId, localPath, path)
+          await sftpUploadDir(sessionId, transferId, localPath, path)
         } catch {
-          await sftpUpload(sessionId, localPath, joinPath(path, baseName(localPath)))
+          await sftpUpload(sessionId, transferId, localPath, joinPath(path, baseName(localPath)))
         }
       }
       await invalidateDirectory()
@@ -309,6 +322,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       setBusy(null)
       setProgress(null)
       setCancelling(false)
+      setActiveTransferId(null)
     }
   }, [busy, invalidateDirectory, path, sessionId, t])
 

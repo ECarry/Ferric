@@ -25,8 +25,8 @@ struct SftpConn {
 /// Tracks open SFTP sessions, keyed by session id.
 pub struct SftpManager {
     sessions: Mutex<HashMap<String, SftpConn>>,
-    /// Per-session cancellation flags for in-flight transfers.
-    cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    /// Per-transfer cancellation flags for in-flight transfers.
+    cancels: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     transfer_slots: Arc<Semaphore>,
 }
 
@@ -34,22 +34,43 @@ impl Default for SftpManager {
     fn default() -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
-            cancels: Mutex::new(HashMap::new()),
+            cancels: Arc::new(Mutex::new(HashMap::new())),
             transfer_slots: Arc::new(Semaphore::new(3)),
         }
     }
 }
 
-/// Reset and return the cancellation flag for a session, called at the start
-/// of every transfer so a stale cancel doesn't abort the next one.
-fn begin_transfer(state: &State<'_, SftpManager>, id: &str) -> Result<Arc<AtomicBool>, AppError> {
-    let mut cancels = state.cancels.lock().map_err(|e| AppError::new("errUnknown").detail(e))?;
-    let flag = cancels
-        .entry(id.to_string())
-        .or_insert_with(|| Arc::new(AtomicBool::new(false)))
-        .clone();
-    flag.store(false, Ordering::SeqCst);
-    Ok(flag)
+struct TransferGuard {
+    cancels: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    transfer_id: String,
+}
+
+impl Drop for TransferGuard {
+    fn drop(&mut self) {
+        if let Ok(mut cancels) = self.cancels.lock() {
+            cancels.remove(&self.transfer_id);
+        }
+    }
+}
+
+/// Create an independent cancellation flag for one transfer.
+fn begin_transfer(
+    state: &State<'_, SftpManager>,
+    transfer_id: &str,
+) -> Result<(Arc<AtomicBool>, TransferGuard), AppError> {
+    let flag = Arc::new(AtomicBool::new(false));
+    state
+        .cancels
+        .lock()
+        .map_err(|e| AppError::new("errUnknown").detail(e))?
+        .insert(transfer_id.to_string(), flag.clone());
+    Ok((
+        flag,
+        TransferGuard {
+            cancels: Arc::clone(&state.cancels),
+            transfer_id: transfer_id.to_string(),
+        },
+    ))
 }
 
 /// A directory entry returned to the frontend (mirrors the `RemoteFile` type).
@@ -176,11 +197,12 @@ pub async fn sftp_list(
     Ok(files)
 }
 
-/// Progress payload emitted during a transfer, keyed by SFTP session id.
+/// Progress payload emitted during a transfer.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TransferProgress {
-    id: String,
+    transfer_id: String,
+    session_id: String,
     transferred: u64,
     total: u64,
 }
@@ -192,11 +214,12 @@ pub async fn sftp_download(
     app: AppHandle,
     state: State<'_, SftpManager>,
     id: String,
+    transfer_id: String,
     remote_path: String,
     local_path: String,
 ) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
-    let cancel = begin_transfer(&state, &id)?;
+    let (cancel, _transfer_guard) = begin_transfer(&state, &transfer_id)?;
     let _slot = state
         .transfer_slots
         .clone()
@@ -219,7 +242,8 @@ pub async fn sftp_download(
         let _ = app.emit(
             "sftp:download-progress",
             TransferProgress {
-                id: id.clone(),
+                transfer_id: transfer_id.clone(),
+                session_id: id.clone(),
                 transferred,
                 total,
             },
@@ -274,13 +298,14 @@ pub async fn sftp_download_dir(
     app: AppHandle,
     state: State<'_, SftpManager>,
     id: String,
+    transfer_id: String,
     remote_path: String,
     local_path: String,
 ) -> Result<(), AppError> {
     use std::path::PathBuf;
 
     let sftp = session_for(&state, &id)?;
-    let cancel = begin_transfer(&state, &id)?;
+    let (cancel, _transfer_guard) = begin_transfer(&state, &transfer_id)?;
     let _slot = state
         .transfer_slots
         .clone()
@@ -335,7 +360,8 @@ pub async fn sftp_download_dir(
         let _ = app.emit(
             "sftp:download-progress",
             TransferProgress {
-                id: id.clone(),
+                transfer_id: transfer_id.clone(),
+                session_id: id.clone(),
                 transferred,
                 total,
             },
@@ -392,11 +418,12 @@ pub async fn sftp_upload(
     app: AppHandle,
     state: State<'_, SftpManager>,
     id: String,
+    transfer_id: String,
     local_path: String,
     remote_path: String,
 ) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
-    let cancel = begin_transfer(&state, &id)?;
+    let (cancel, _transfer_guard) = begin_transfer(&state, &transfer_id)?;
     let _slot = state
         .transfer_slots
         .clone()
@@ -416,7 +443,8 @@ pub async fn sftp_upload(
         let _ = app.emit(
             "sftp:upload-progress",
             TransferProgress {
-                id: id.clone(),
+                transfer_id: transfer_id.clone(),
+                session_id: id.clone(),
                 transferred,
                 total,
             },
@@ -471,13 +499,14 @@ pub async fn sftp_upload_dir(
     app: AppHandle,
     state: State<'_, SftpManager>,
     id: String,
+    transfer_id: String,
     local_path: String,
     remote_path: String,
 ) -> Result<(), AppError> {
     use std::path::PathBuf;
 
     let sftp = session_for(&state, &id)?;
-    let cancel = begin_transfer(&state, &id)?;
+    let (cancel, _transfer_guard) = begin_transfer(&state, &transfer_id)?;
     let _slot = state
         .transfer_slots
         .clone()
@@ -541,7 +570,8 @@ pub async fn sftp_upload_dir(
         let _ = app.emit(
             "sftp:upload-progress",
             TransferProgress {
-                id: id.clone(),
+                transfer_id: transfer_id.clone(),
+                session_id: id.clone(),
                 transferred,
                 total,
             },
@@ -601,11 +631,11 @@ pub async fn sftp_upload_dir(
     Ok(())
 }
 
-/// Cancel an in-flight transfer (upload/download) for the given session.
+/// Cancel one in-flight transfer by its independent transfer ID.
 #[tauri::command]
-pub fn sftp_cancel(state: State<'_, SftpManager>, id: String) -> Result<(), AppError> {
+pub fn sftp_cancel(state: State<'_, SftpManager>, transfer_id: String) -> Result<(), AppError> {
     let cancels = state.cancels.lock().map_err(|e| AppError::new("errUnknown").detail(e))?;
-    if let Some(flag) = cancels.get(&id) {
+    if let Some(flag) = cancels.get(&transfer_id) {
         flag.store(true, Ordering::SeqCst);
     }
     Ok(())
@@ -653,9 +683,6 @@ pub async fn sftp_rename(
 /// Close an SFTP session and drop its SSH connection.
 #[tauri::command]
 pub async fn sftp_disconnect(state: State<'_, SftpManager>, id: String) -> Result<(), AppError> {
-    if let Ok(mut cancels) = state.cancels.lock() {
-        cancels.remove(&id);
-    }
     let conn = state.sessions.lock().map_err(|e| AppError::new("errUnknown").detail(e))?.remove(&id);
     if let Some(conn) = conn {
         let _ = conn.sftp.close().await;
