@@ -13,6 +13,7 @@ use crate::error::AppError;
 
 /// Path to the known_hosts file, set once during app startup.
 static KNOWN_HOSTS_PATH: OnceLock<PathBuf> = OnceLock::new();
+static KNOWN_HOSTS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// Set the known_hosts file path. Called once from `lib.rs` setup.
 pub fn set_known_hosts_path(path: PathBuf) {
@@ -31,13 +32,15 @@ fn load_known_hosts() -> std::collections::BTreeMap<String, String> {
 }
 
 /// Persist the known_hosts map to disk.
-fn save_known_hosts(map: &std::collections::BTreeMap<String, String>) {
+fn save_known_hosts(map: &std::collections::BTreeMap<String, String>) -> std::io::Result<()> {
     let Some(path) = KNOWN_HOSTS_PATH.get() else {
-        return;
+        return Ok(());
     };
-    if let Ok(json) = serde_json::to_string_pretty(map) {
-        let _ = std::fs::write(path, json);
-    }
+    let json = serde_json::to_vec_pretty(map)
+        .map_err(std::io::Error::other)?;
+    let temp_path = path.with_extension("json.tmp");
+    std::fs::write(&temp_path, json)?;
+    std::fs::rename(temp_path, path)
 }
 
 /// Config sent from the frontend to open a connection.
@@ -81,7 +84,7 @@ enum InputMsg {
 /// Holds the input channel for each live session, keyed by session id.
 #[derive(Default)]
 pub struct SshManager {
-    sessions: Mutex<HashMap<String, mpsc::UnboundedSender<InputMsg>>>,
+    sessions: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<InputMsg>>>>,
 }
 
 /// russh client handler with TOFU (Trust On First Use) host key verification.
@@ -108,6 +111,8 @@ impl client::Handler for Client {
             .to_string();
         let key = self.key_for();
 
+        let lock = KNOWN_HOSTS_LOCK.get_or_init(Mutex::default);
+        let _guard = lock.lock().map_err(|_| russh::Error::IO(std::io::Error::other("known_hosts lock poisoned")))?;
         let mut hosts = load_known_hosts();
         match hosts.get(&key) {
             Some(known_fp) if known_fp == &fp => {
@@ -127,7 +132,10 @@ impl client::Handler for Client {
             None => {
                 // First connection — trust and store (TOFU).
                 hosts.insert(key, fp);
-                save_known_hosts(&hosts);
+                if let Err(error) = save_known_hosts(&hosts) {
+                    log::error!("Failed to persist known host: {error}");
+                    return Ok(false);
+                }
                 Ok(true)
             }
         }
@@ -231,6 +239,7 @@ async fn establish(cfg: &ConnectConfig) -> anyhow::Result<(Handle<Client>, Chann
 async fn run_loop(
     app: AppHandle,
     id: String,
+    sessions: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<InputMsg>>>>,
     session: Handle<Client>,
     mut channel: Channel<client::Msg>,
     mut rx: mpsc::UnboundedReceiver<InputMsg>,
@@ -277,6 +286,9 @@ async fn run_loop(
     let _ = session
         .disconnect(Disconnect::ByApplication, "", "English")
         .await;
+    if let Ok(mut sessions) = sessions.lock() {
+        sessions.remove(&id);
+    }
     let _ = app.emit("ssh:closed", ClosedPayload { id });
 }
 
@@ -299,8 +311,9 @@ pub async fn ssh_connect(
 
     let app_handle = app.clone();
     let loop_id = id.clone();
+    let sessions = Arc::clone(&state.sessions);
     tauri::async_runtime::spawn(async move {
-        run_loop(app_handle, loop_id, session, channel, rx).await;
+        run_loop(app_handle, loop_id, sessions, session, channel, rx).await;
     });
 
     Ok(id)
@@ -312,11 +325,15 @@ pub fn ssh_send_input(
     id: String,
     data: String,
 ) -> Result<(), AppError> {
-    let sessions = state.sessions.lock().map_err(|e| e.to_string())?;
-    if let Some(tx) = sessions.get(&id) {
-        tx.send(InputMsg::Data(data.into_bytes()))
-            .map_err(|e| e.to_string())?;
-    }
+    let sessions = state
+        .sessions
+        .lock()
+        .map_err(|e| AppError::new("errUnknown").detail(e))?;
+    let tx = sessions
+        .get(&id)
+        .ok_or_else(|| AppError::new("errSshNoSession"))?;
+    tx.send(InputMsg::Data(data.into_bytes()))
+        .map_err(|_| AppError::new("errSshSessionClosed"))?;
     Ok(())
 }
 
@@ -327,18 +344,24 @@ pub fn ssh_resize(
     cols: u32,
     rows: u32,
 ) -> Result<(), AppError> {
-    let sessions = state.sessions.lock().map_err(|e| e.to_string())?;
-    if let Some(tx) = sessions.get(&id) {
-        let _ = tx.send(InputMsg::Resize { cols, rows });
-    }
+    let sessions = state
+        .sessions
+        .lock()
+        .map_err(|e| AppError::new("errUnknown").detail(e))?;
+    let tx = sessions
+        .get(&id)
+        .ok_or_else(|| AppError::new("errSshNoSession"))?;
+    tx.send(InputMsg::Resize { cols, rows })
+        .map_err(|_| AppError::new("errSshSessionClosed"))?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn ssh_disconnect(state: State<'_, SshManager>, id: String) -> Result<(), AppError> {
     let mut sessions = state.sessions.lock().map_err(|e| e.to_string())?;
-    if let Some(tx) = sessions.remove(&id) {
-        let _ = tx.send(InputMsg::Close);
-    }
+    let tx = sessions
+        .remove(&id)
+        .ok_or_else(|| AppError::new("errSshNoSession"))?;
+    let _ = tx.send(InputMsg::Close);
     Ok(())
 }

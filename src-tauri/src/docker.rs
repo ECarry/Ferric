@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::ssh::{connect_and_auth, ConnectConfig};
 
+const REMOTE_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const MAX_COMMAND_OUTPUT: usize = 5 * 1024 * 1024;
+
 /// 返回给前端的容器信息
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -96,10 +99,29 @@ async fn exec_on_session(
     let mut stderr = Vec::new();
     let mut exit_status: Option<u32> = None;
 
-    while let Some(msg) = channel.wait().await {
+    let deadline = tokio::time::sleep(REMOTE_COMMAND_TIMEOUT);
+    tokio::pin!(deadline);
+    loop {
+        let msg = tokio::select! {
+            _ = &mut deadline => {
+                return Err(AppError::new("errRemoteCommandTimeout"));
+            }
+            msg = channel.wait() => msg,
+        };
+        let Some(msg) = msg else { break };
         match msg {
-            ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
-            ChannelMsg::ExtendedData { data, ext } if ext == 1 => stderr.extend_from_slice(&data),
+            ChannelMsg::Data { data } => {
+                if stdout.len().saturating_add(data.len()) > MAX_COMMAND_OUTPUT {
+                    return Err(AppError::new("errRemoteOutputTooLarge"));
+                }
+                stdout.extend_from_slice(&data);
+            }
+            ChannelMsg::ExtendedData { data, ext } if ext == 1 => {
+                if stderr.len().saturating_add(data.len()) > MAX_COMMAND_OUTPUT {
+                    return Err(AppError::new("errRemoteOutputTooLarge"));
+                }
+                stderr.extend_from_slice(&data);
+            }
             ChannelMsg::ExitStatus {
                 exit_status: status,
             } => exit_status = Some(status),

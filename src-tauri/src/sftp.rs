@@ -9,9 +9,12 @@ use russh_sftp::protocol::FileType;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Semaphore;
 
 use crate::error::AppError;
 use crate::ssh::{connect_and_auth, Client, ConnectConfig};
+
+const SFTP_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// A live SFTP session plus the SSH handle that keeps its connection open.
 struct SftpConn {
@@ -20,11 +23,21 @@ struct SftpConn {
 }
 
 /// Tracks open SFTP sessions, keyed by session id.
-#[derive(Default)]
 pub struct SftpManager {
     sessions: Mutex<HashMap<String, SftpConn>>,
     /// Per-session cancellation flags for in-flight transfers.
     cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    transfer_slots: Arc<Semaphore>,
+}
+
+impl Default for SftpManager {
+    fn default() -> Self {
+        Self {
+            sessions: Mutex::new(HashMap::new()),
+            cancels: Mutex::new(HashMap::new()),
+            transfer_slots: Arc::new(Semaphore::new(3)),
+        }
+    }
 }
 
 /// Reset and return the cancellation flag for a session, called at the start
@@ -184,6 +197,12 @@ pub async fn sftp_download(
 ) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
     let cancel = begin_transfer(&state, &id)?;
+    let _slot = state
+        .transfer_slots
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| AppError::new("errSftpTransferUnavailable"))?;
     // Best-effort total size for the progress bar; 0 means unknown.
     let total = sftp
         .metadata(&remote_path)
@@ -217,13 +236,16 @@ pub async fn sftp_download(
             cancelled = true;
             break;
         }
-        let n = remote.read(&mut buf).await.map_err(|e| AppError::new("errSftpRead").detail(e))?;
+        let n = tokio::time::timeout(SFTP_IO_TIMEOUT, remote.read(&mut buf))
+            .await
+            .map_err(|_| AppError::new("errSftpTransferTimeout"))?
+            .map_err(|e| AppError::new("errSftpRead").detail(e))?;
         if n == 0 {
             break;
         }
-        local
-            .write_all(&buf[..n])
+        tokio::time::timeout(SFTP_IO_TIMEOUT, local.write_all(&buf[..n]))
             .await
+            .map_err(|_| AppError::new("errSftpTransferTimeout"))?
             .map_err(|e| AppError::new("errSftpWrite").detail(e))?;
         transferred += n as u64;
         // Throttle to ~10 events/sec to avoid flooding the IPC channel.
@@ -259,6 +281,12 @@ pub async fn sftp_download_dir(
 
     let sftp = session_for(&state, &id)?;
     let cancel = begin_transfer(&state, &id)?;
+    let _slot = state
+        .transfer_slots
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| AppError::new("errSftpTransferUnavailable"))?;
 
     // Recreate the remote folder as a subdirectory of the chosen local parent.
     let folder_name = remote_path
@@ -329,7 +357,10 @@ pub async fn sftp_download_dir(
                 cancelled = true;
                 break 'files;
             }
-            let n = remote.read(&mut buf).await.map_err(|e| AppError::new("errSftpRead").detail(e))?;
+            let n = tokio::time::timeout(SFTP_IO_TIMEOUT, remote.read(&mut buf))
+            .await
+            .map_err(|_| AppError::new("errSftpTransferTimeout"))?
+            .map_err(|e| AppError::new("errSftpRead").detail(e))?;
             if n == 0 {
                 break;
             }
@@ -366,6 +397,12 @@ pub async fn sftp_upload(
 ) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
     let cancel = begin_transfer(&state, &id)?;
+    let _slot = state
+        .transfer_slots
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| AppError::new("errSftpTransferUnavailable"))?;
     let total = tokio::fs::metadata(&local_path)
         .await
         .map(|m| m.len())
@@ -396,13 +433,16 @@ pub async fn sftp_upload(
             cancelled = true;
             break;
         }
-        let n = local.read(&mut buf).await.map_err(|e| AppError::new("errSftpRead").detail(e))?;
+        let n = tokio::time::timeout(SFTP_IO_TIMEOUT, local.read(&mut buf))
+            .await
+            .map_err(|_| AppError::new("errSftpTransferTimeout"))?
+            .map_err(|e| AppError::new("errSftpRead").detail(e))?;
         if n == 0 {
             break;
         }
-        remote
-            .write_all(&buf[..n])
+        tokio::time::timeout(SFTP_IO_TIMEOUT, remote.write_all(&buf[..n]))
             .await
+            .map_err(|_| AppError::new("errSftpTransferTimeout"))?
             .map_err(|e| AppError::new("errSftpWrite").detail(e))?;
         transferred += n as u64;
         if last_emit.elapsed().as_millis() >= 100 {
@@ -438,6 +478,12 @@ pub async fn sftp_upload_dir(
 
     let sftp = session_for(&state, &id)?;
     let cancel = begin_transfer(&state, &id)?;
+    let _slot = state
+        .transfer_slots
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| AppError::new("errSftpTransferUnavailable"))?;
 
     // Recreate the local folder as a subdirectory of the chosen remote parent.
     let folder_name = std::path::Path::new(&local_path)

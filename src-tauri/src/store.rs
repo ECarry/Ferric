@@ -108,10 +108,24 @@ fn delete_secret(account: &str) {
 #[tauri::command]
 pub fn load_config(app: AppHandle) -> Result<Config, AppError> {
     let path = config_path(&app)?;
+    let backup_path = path.with_extension("json.bak");
     let mut config: Config = if path.exists() {
         let raw = fs::read_to_string(&path)
             .map_err(|e| AppError::new("errConfigRead").detail(e))?;
-        serde_json::from_str(&raw).map_err(|e| AppError::new("errConfigParse").detail(e))?
+        match serde_json::from_str(&raw) {
+            Ok(config) => config,
+            Err(primary_error) if backup_path.exists() => {
+                let backup = fs::read_to_string(&backup_path)
+                    .map_err(|e| AppError::new("errConfigRead").detail(e))?;
+                serde_json::from_str(&backup)
+                    .map_err(|e| AppError::new("errConfigParse").detail(format!("{primary_error}; backup: {e}")))?
+            }
+            Err(error) => return Err(AppError::new("errConfigParse").detail(error)),
+        }
+    } else if backup_path.exists() {
+        let backup = fs::read_to_string(&backup_path)
+            .map_err(|e| AppError::new("errConfigRead").detail(e))?;
+        serde_json::from_str(&backup).map_err(|e| AppError::new("errConfigParse").detail(e))?
     } else {
         Config::default()
     };
@@ -149,10 +163,24 @@ pub fn save_config(app: AppHandle, config: Config) -> Result<(), AppError> {
         }
     }
 
-    let json = serde_json::to_string_pretty(&to_write)
+    let json = serde_json::to_vec_pretty(&to_write)
         .map_err(|e| AppError::new("errConfigSerialize").detail(e))?;
-    fs::write(&path, json)
+    let temp_path = path.with_extension("json.tmp");
+    let backup_path = path.with_extension("json.bak");
+
+    fs::write(&temp_path, json)
         .map_err(|e| AppError::new("errConfigWrite").detail(e))?;
+    if path.exists() {
+        let _ = fs::remove_file(&backup_path);
+        fs::rename(&path, &backup_path)
+            .map_err(|e| AppError::new("errConfigWrite").detail(e))?;
+    }
+    if let Err(error) = fs::rename(&temp_path, &path) {
+        if backup_path.exists() && !path.exists() {
+            let _ = fs::rename(&backup_path, &path);
+        }
+        return Err(AppError::new("errConfigWrite").detail(error));
+    }
     Ok(())
 }
 
