@@ -13,7 +13,6 @@ import {
   FolderPlus,
   Home,
   Info,
-  Loader2,
   Pencil,
   Play,
   RefreshCw,
@@ -46,10 +45,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
-  createTransferId,
-  onDownloadProgress,
-  onUploadProgress,
-  sftpCancel,
   sftpDownload,
   sftpDownloadDir,
   sftpUpload,
@@ -89,18 +84,9 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const directoryQuery = useSftpDirectory(sessionId, path)
   const { mkdir, rename, remove, invalidateDirectory } = useSftpMutations(sessionId, path)
   const transferManager = useSftpTransferManager(sessionId)
-  const { tasks, history } = transferManager
-  const retryTransfer = transferManager.retry
-  const { paused, pause, resume } = transferManager
+  const { tasks, history, start, retry: retryTransfer, cancel: cancelTransfer, paused, pause, resume } = transferManager
   const files = directoryQuery.data ?? []
   const loading = directoryQuery.isLoading || directoryQuery.isFetching
-  const [busy, setBusy] = useState<string | null>(null)
-  const [progress, setProgress] = useState<{
-    transferred: number
-    total: number
-  } | null>(null)
-  const [cancelling, setCancelling] = useState(false)
-  const [activeTransferId, setActiveTransferId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [promptDialog, setPromptDialog] = useState<{
     title: string
@@ -115,18 +101,9 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const [propertiesFile, setPropertiesFile] = useState<typeof selectedFile>(null)
   const dragPathsRef = useRef<string[]>([])
 
-  const onCancel = async () => {
-    setCancelling(true)
-    try {
-      if (activeTransferId) await sftpCancel(activeTransferId)
-    } catch (e) {
-      console.error('取消传输失败', e)
-    }
-  }
-
   const onCancelTask = async (id: string) => {
     try {
-      await transferManager.cancel(id)
+      await cancelTransfer(id)
     } catch (e) {
       setError(formatAppError(e, t))
     }
@@ -156,7 +133,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     if (typeof picked !== 'string') return
     setError(null)
     try {
-      await transferManager.start({
+      await start({
         kind: 'upload',
         label: baseName(picked),
         run: (transferId) => sftpUpload(sessionId, transferId, picked, joinPath(path, baseName(picked))),
@@ -170,27 +147,16 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const onUploadFolder = async () => {
     const picked = await openDialog({ multiple: false, directory: true })
     if (typeof picked !== 'string') return
-    setBusy(t('uploadingFolder'))
     setError(null)
-    setCancelling(false)
-    setProgress({ transferred: 0, total: 0 })
-    const transferId = createTransferId()
-    setActiveTransferId(transferId)
-    const unlisten = await onUploadProgress((p) => {
-      if (p.transferId === transferId)
-        setProgress({ transferred: p.transferred, total: p.total })
-    })
     try {
-      await sftpUploadDir(sessionId, transferId, picked, path)
+      await start({
+        kind: 'upload',
+        label: baseName(picked),
+        run: (transferId) => sftpUploadDir(sessionId, transferId, picked, path),
+      })
       await invalidateDirectory()
     } catch (e) {
       setError(formatAppError(e, t))
-    } finally {
-      unlisten()
-      setBusy(null)
-      setProgress(null)
-      setCancelling(false)
-      setActiveTransferId(null)
     }
   }
 
@@ -205,30 +171,18 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       : await saveDialog({ defaultPath: selectedFile.name })
     if (typeof dest !== 'string') return
 
-    setBusy(isDir ? t('downloadingFolder') : t('downloading'))
     setError(null)
-    setCancelling(false)
-    setProgress({ transferred: 0, total: isDir ? 0 : selectedFile.size })
-    const transferId = createTransferId()
-    setActiveTransferId(transferId)
-    const unlisten = await onDownloadProgress((p) => {
-      if (p.transferId === transferId)
-        setProgress({ transferred: p.transferred, total: p.total })
-    })
     try {
-      if (isDir) {
-        await sftpDownloadDir(sessionId, transferId, remotePath, dest)
-      } else {
-        await sftpDownload(sessionId, transferId, remotePath, dest)
-      }
+      await start({
+        kind: 'download',
+        label: selectedFile.name,
+        total: isDir ? 0 : selectedFile.size,
+        run: (transferId) => isDir
+          ? sftpDownloadDir(sessionId, transferId, remotePath, dest)
+          : sftpDownload(sessionId, transferId, remotePath, dest),
+      })
     } catch (e) {
       setError(formatAppError(e, t))
-    } finally {
-      unlisten()
-      setBusy(null)
-      setProgress(null)
-      setCancelling(false)
-      setActiveTransferId(null)
     }
   }
 
@@ -340,39 +294,26 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   }, [])
 
   const onDropUpload = useCallback(async (paths: string[]) => {
-    if (busy) return
-    setBusy(t('uploading'))
     setError(null)
-    setCancelling(false)
-    setProgress({ transferred: 0, total: 0 })
-    const transferId = createTransferId()
-    setActiveTransferId(transferId)
-    const unlisten = await onUploadProgress((p) => {
-      if (p.transferId === transferId)
-        setProgress({ transferred: p.transferred, total: p.total })
-    })
     try {
-      for (const localPath of paths) {
-        // Heuristic: trailing slash or known directory check isn't available
-        // from the path alone. We attempt sftpUploadDir first; if it fails
-        // because the path is a file, fall back to sftpUpload.
-        try {
-          await sftpUploadDir(sessionId, transferId, localPath, path)
-        } catch {
-          await sftpUpload(sessionId, transferId, localPath, joinPath(path, baseName(localPath)))
-        }
-      }
+      await start({
+        kind: 'upload',
+        label: `${paths.length} dropped item${paths.length === 1 ? '' : 's'}`,
+        run: async (transferId) => {
+          for (const localPath of paths) {
+            try {
+              await sftpUploadDir(sessionId, transferId, localPath, path)
+            } catch {
+              await sftpUpload(sessionId, transferId, localPath, joinPath(path, baseName(localPath)))
+            }
+          }
+        },
+      })
       await invalidateDirectory()
     } catch (e) {
       setError(formatAppError(e, t))
-    } finally {
-      unlisten()
-      setBusy(null)
-      setProgress(null)
-      setCancelling(false)
-      setActiveTransferId(null)
     }
-  }, [busy, invalidateDirectory, path, sessionId, t])
+  }, [invalidateDirectory, path, sessionId, start, t])
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined
@@ -407,7 +348,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     return () => {
       unlisten?.()
     }
-  }, [busy, invalidateDirectory, isDraggingOver, onDropUpload, path, sessionId, t])
+  }, [isDraggingOver, onDropUpload, path, sessionId, t])
 
   const segments = path.split('/').filter(Boolean)
 
@@ -464,14 +405,14 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         >
           <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
         </Button>
-        <Button variant="outline" size="sm" disabled={!!busy} onClick={onUpload}>
+        <Button variant="outline" size="sm" onClick={onUpload}>
           <Upload className="h-4 w-4" />
           {t('upload')}
         </Button>
         <Button
           variant="outline"
           size="sm"
-          disabled={!!busy}
+         
           onClick={onUploadFolder}
         >
           <FolderUp className="h-4 w-4" />
@@ -480,7 +421,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         <Button
           variant="outline"
           size="sm"
-          disabled={!!busy}
+         
           onClick={onMkdir}
         >
           <FolderPlus className="h-4 w-4" />
@@ -489,7 +430,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         <Button
           variant="outline"
           size="sm"
-          disabled={!selectedFile || !!busy}
+          disabled={!selectedFile}
           onClick={onDownload}
         >
           <Download className="h-4 w-4" />
@@ -569,21 +510,21 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
           </table>
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-52">
-          <ContextMenuItem onClick={onOpen} disabled={!selectedFile || selectedFile.type !== 'dir' || !!busy}>
+          <ContextMenuItem onClick={onOpen} disabled={!selectedFile || selectedFile.type !== 'dir'}>
             <FolderClosed className="h-4 w-4" />
             {t('open')}
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onClick={() => void invalidateDirectory()} disabled={!!busy}>
+          <ContextMenuItem onClick={() => void invalidateDirectory()}>
             <RefreshCw className="h-4 w-4" />
             {t('refresh')}
           </ContextMenuItem>
-          <ContextMenuItem onClick={onUpload} disabled={!!busy}>
+          <ContextMenuItem onClick={onUpload}>
             <Upload className="h-4 w-4" />
             {t('uploadHere')}
             <ChevronRight className="ml-auto h-4 w-4" />
           </ContextMenuItem>
-          <ContextMenuItem onClick={onDownload} disabled={!selectedFile || !!busy}>
+          <ContextMenuItem onClick={onDownload} disabled={!selectedFile}>
             <Download className="h-4 w-4" />
             {t('download')}
             <ChevronRight className="ml-auto h-4 w-4" />
@@ -591,17 +532,17 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
           {selectedFile && (
             <>
               <ContextMenuSeparator />
-              <ContextMenuItem onClick={onRename} disabled={!!busy}>
+              <ContextMenuItem onClick={onRename}>
                 <Pencil className="h-4 w-4" />
                 {t('rename')}
                 <span className="ml-auto">...</span>
               </ContextMenuItem>
-              <ContextMenuItem onClick={onMoveTo} disabled={!!busy}>
+              <ContextMenuItem onClick={onMoveTo}>
                 <FolderInput className="h-4 w-4" />
                 {t('moveTo')}
                 <span className="ml-auto">...</span>
               </ContextMenuItem>
-              <ContextMenuItem variant="destructive" onClick={onRemove} disabled={!!busy}>
+              <ContextMenuItem variant="destructive" onClick={onRemove}>
                 <Trash2 className="h-4 w-4" />
                 {t('remove')}
               </ContextMenuItem>
@@ -705,42 +646,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
 
       {/* Status bar */}
       <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
-        {busy ? (
-          <div className="flex flex-1 items-center gap-2">
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-            <span className="shrink-0">{cancelling ? t('cancelling') : busy}</span>
-            {progress && progress.total > 0 ? (
-              <>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-[width] duration-150"
-                    style={{
-                      width: `${Math.min(100, Math.floor((progress.transferred / progress.total) * 100))}%`,
-                    }}
-                  />
-                </div>
-                <span className="shrink-0 tabular-nums">
-                  {formatSize(progress.transferred)} / {formatSize(progress.total)} (
-                  {Math.min(100, Math.floor((progress.transferred / progress.total) * 100))}%)
-                </span>
-              </>
-            ) : progress ? (
-              <span className="shrink-0 tabular-nums">
-                {formatSize(progress.transferred)}
-              </span>
-            ) : null}
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="ml-auto shrink-0"
-              title={t('cancelTransfer')}
-              disabled={cancelling}
-              onClick={onCancel}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ) : selected ? (
+        {selected ? (
           <span>
             {t('selected')} <span className="text-foreground">{selected}</span>
           </span>
