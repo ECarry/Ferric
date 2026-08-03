@@ -318,7 +318,7 @@ export function DockerView({ sshConfig }: Props) {
             <DialogHeader>
               <DialogTitle>{t('deleteContainer')}</DialogTitle>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">
+            <p className="min-w-0 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
               {t('confirmDeleteContainer', { name: deleteTarget.names })}
             </p>
             <DialogFooter>

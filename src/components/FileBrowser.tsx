@@ -26,9 +26,11 @@ import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialo
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { cn } from '@/lib/utils'
+import type { RemoteFile } from '@/types'
 import { formatAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -99,6 +101,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const [promptBusy, setPromptBusy] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [propertiesFile, setPropertiesFile] = useState<typeof selectedFile>(null)
+  const [deleteTarget, setDeleteTarget] = useState<RemoteFile | null>(null)
   const dragPathsRef = useRef<string[]>([])
 
   const onCancelTask = async (id: string) => {
@@ -249,21 +252,22 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   }
 
   const onRemove = () => {
-    if (!selectedFile) return
-    setPromptDialog({
-      title: t('remove'),
-      label: t('confirmDelete', { name: selectedFile.name }),
-      initialValue: '',
-      showInput: false,
-      onConfirm: async () => {
-        await remove.mutateAsync({
-          targetPath: joinPath(path, selectedFile.name),
-          isDir: selectedFile.type === 'dir',
-        })
-        setSelected(null)
-        navigate(path)
-      },
-    })
+    if (selectedFile) setDeleteTarget(selectedFile)
+  }
+
+  const onConfirmDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await remove.mutateAsync({
+        targetPath: joinPath(path, deleteTarget.name),
+        isDir: deleteTarget.type === 'dir',
+      })
+      setSelected(null)
+      setDeleteTarget(null)
+      navigate(path)
+    } catch (e) {
+      setError(formatAppError(e, t))
+    }
   }
 
   const onPromptConfirm = async () => {
@@ -655,14 +659,24 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         )}
       </div>
 
-      {/* Prompt dialog for mkdir / rename / remove */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={t('remove')}
+        description={deleteTarget ? t('confirmDelete', { name: deleteTarget.name }) : null}
+        destructive
+        confirmText={t('delete')}
+        onConfirm={() => void onConfirmDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Prompt dialog for mkdir / rename */}
       <Dialog open={!!promptDialog} onOpenChange={(open) => { if (!open) setPromptDialog(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{promptDialog?.title}</DialogTitle>
+        <DialogContent className="min-w-0 sm:max-w-sm">
+          <DialogHeader className="min-w-0">
+            <DialogTitle className="min-w-0 break-words [overflow-wrap:anywhere]">{promptDialog?.title}</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-muted-foreground">{promptDialog?.label}</label>
+          <div className="min-w-0 flex flex-col gap-2">
+            <label className="min-w-0 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">{promptDialog?.label}</label>
             {promptDialog?.showInput && (
               <Input
                 autoFocus

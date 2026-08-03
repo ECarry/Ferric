@@ -35,11 +35,11 @@ export function ConfirmDialog({
   const { t } = useI18n()
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+      <DialogContent className="min-w-0 sm:max-w-sm">
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="min-w-0 break-words [overflow-wrap:anywhere]">{title}</DialogTitle>
           {description ? (
-            <DialogDescription>{description}</DialogDescription>
+            <DialogDescription className="min-w-0 break-words [overflow-wrap:anywhere]">{description}</DialogDescription>
           ) : null}
         </DialogHeader>
         <DialogFooter className="mt-2">
