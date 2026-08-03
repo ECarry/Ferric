@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Activity, Container, FolderTree, Loader2, Pencil, Plug, Power, TerminalSquare, Zap } from 'lucide-react'
+import { Activity, Container, FolderTree, Loader2, Pencil, Plug, Power, ServerCog, TerminalSquare, Zap } from 'lucide-react'
 import type { ConnectionStatus, Server } from '@/types'
 import { cn } from '@/lib/utils'
 import { formatAppError, isAppError } from '@/lib/error'
@@ -20,6 +20,7 @@ const FileBrowser = lazy(() => import('./FileBrowser').then((module) => ({ defau
 const DockerView = lazy(() => import('./docker/DockerView').then((module) => ({ default: module.DockerView })))
 const PortForwardView = lazy(() => import('./PortForwardView').then((module) => ({ default: module.PortForwardView })))
 const PerformanceView = lazy(() => import('./PerformanceView').then((module) => ({ default: module.PerformanceView })))
+const ServicesView = lazy(() => import('./ServicesView').then((module) => ({ default: module.ServicesView })))
 
 interface MainPanelProps {
   server?: Server
@@ -233,6 +234,10 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
                 <Activity className="h-4 w-4" />
                 {t('performance')}
               </TabsTrigger>
+              <TabsTrigger value="services">
+                <ServerCog className="h-4 w-4" />
+                {t('services')}
+              </TabsTrigger>
             </TabsList>
           </div>
           <Suspense
@@ -271,6 +276,11 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           {mountedTabs.has('performance') && (
             <TabsContent value="performance" className="min-h-0">
               {sshConfig && <PerformanceView sshConfig={sshConfig} active={tab === 'performance'} />}
+            </TabsContent>
+          )}
+          {mountedTabs.has('services') && (
+            <TabsContent value="services" className="min-h-0">
+              {sshConfig && <ServicesView sshConfig={sshConfig} />}
             </TabsContent>
           )}
           </Suspense>
