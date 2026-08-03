@@ -22,7 +22,7 @@ export interface TransferTask {
   finishedAt?: number
 }
 
-interface StartTransferOptions {
+export interface StartTransferOptions {
   kind: TransferKind
   label: string
   total?: number
@@ -31,6 +31,7 @@ interface StartTransferOptions {
 
 export function useSftpTransferManager(sessionId: string) {
   const [tasks, setTasks] = useState<TransferTask[]>([])
+  const runners = useRef(new Map<string, StartTransferOptions>())
   const cancelledIds = useRef(new Set<string>())
 
   const updateTask = useCallback((id: string, update: Partial<TransferTask>) => {
@@ -39,6 +40,7 @@ export function useSftpTransferManager(sessionId: string) {
 
   const start = useCallback(async ({ kind, label, total = 0, run }: StartTransferOptions) => {
     const id = createTransferId()
+    runners.current.set(id, { kind, label, total, run })
     setTasks((current) => [...current, {
       id,
       kind,
@@ -84,6 +86,12 @@ export function useSftpTransferManager(sessionId: string) {
     return id
   }, [sessionId, updateTask])
 
+  const retry = useCallback(async (id: string) => {
+    const runner = runners.current.get(id)
+    if (!runner) return
+    return start(runner)
+  }, [start])
+
   const cancel = useCallback(async (id: string) => {
     cancelledIds.current.add(id)
     updateTask(id, { status: 'cancelling' })
@@ -104,5 +112,5 @@ export function useSftpTransferManager(sessionId: string) {
     task.status === 'completed' || task.status === 'cancelled' || task.status === 'failed',
   )
 
-  return { tasks, history, start, cancel }
+  return { tasks, history, start, cancel, retry }
 }

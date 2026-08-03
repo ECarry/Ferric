@@ -16,6 +16,7 @@ import {
   Loader2,
   Pencil,
   RefreshCw,
+  RotateCcw,
   Trash2,
   Upload,
   FolderUp,
@@ -88,6 +89,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const { mkdir, rename, remove, invalidateDirectory } = useSftpMutations(sessionId, path)
   const transferManager = useSftpTransferManager(sessionId)
   const { tasks, history } = transferManager
+  const retryTransfer = transferManager.retry
   const files = directoryQuery.data ?? []
   const loading = directoryQuery.isLoading || directoryQuery.isFetching
   const [busy, setBusy] = useState<string | null>(null)
@@ -123,6 +125,14 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const onCancelTask = async (id: string) => {
     try {
       await transferManager.cancel(id)
+    } catch (e) {
+      setError(formatAppError(e, t))
+    }
+  }
+
+  const onRetryTask = async (id: string) => {
+    try {
+      await retryTransfer(id)
     } catch (e) {
       setError(formatAppError(e, t))
     }
@@ -667,6 +677,16 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
                     onClick={() => void onCancelTask(task.id)}
                   >
                     <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {task.status === 'failed' && (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    title="Retry"
+                    onClick={() => void onRetryTask(task.id)}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>
