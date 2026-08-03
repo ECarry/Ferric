@@ -1,5 +1,8 @@
 {
   "searchServers": "搜索服务器...",
+  "clearSearch": "清除搜索",
+  "searchResults": "找到 {{count}} 台服务器",
+  "noSearchResults": "未找到匹配的服务器",
   "loadingConfiguration": "正在加载配置...",
   "configurationLoadFailed": "配置加载失败",
   "retry": "重试",
@@ -40,6 +43,8 @@
   "username": "用户名",
   "authentication": "认证方式",
   "password": "密码",
+  "showPassword": "显示密码",
+  "hidePassword": "隐藏密码",
   "key": "密钥",
   "privateKeyPath": "私钥路径",
   "privateKeyPassphrase": "私钥口令（可选）",

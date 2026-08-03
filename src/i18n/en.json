@@ -1,5 +1,8 @@
 {
   "searchServers": "Search servers...",
+  "clearSearch": "Clear search",
+  "searchResults": "{{count}} server(s) found",
+  "noSearchResults": "No matching servers",
   "loadingConfiguration": "Loading configuration...",
   "configurationLoadFailed": "Failed to load configuration.",
   "retry": "Try again",
@@ -40,6 +43,8 @@
   "username": "Username",
   "authentication": "Authentication",
   "password": "Password",
+  "showPassword": "Show password",
+  "hidePassword": "Hide password",
   "key": "Key",
   "privateKeyPath": "Private key path",
   "privateKeyPassphrase": "Passphrase (optional)",

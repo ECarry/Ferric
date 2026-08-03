@@ -229,8 +229,21 @@ export function Sidebar({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('searchServers')}
-            className="h-9 rounded-full border-0 bg-muted pl-9 text-sm shadow-inner ring-1 ring-transparent transition focus:bg-background focus:ring-2 focus:ring-primary/20"
+            aria-label={t('searchServers')}
+            className="h-9 rounded-full border-0 bg-muted pr-9 pl-9 text-sm shadow-inner ring-1 ring-transparent transition focus:bg-background focus:ring-2 focus:ring-primary/20"
           />
+          {query && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t('clearSearch')}
+              onClick={() => setQuery('')}
+              className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2 rounded-full"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -260,6 +273,11 @@ export function Sidebar({
 
       {/* Groups + servers */}
       <div className="flex-1 overflow-y-auto px-2">
+        {query.trim() && (
+          <div className="px-2 pb-2 text-xs text-muted-foreground" role="status">
+            {t('searchResults', { count: filtered.length })}
+          </div>
+        )}
         {adding && (
           <div className="mb-1 flex items-center gap-1 px-1">
             <Folder className="h-3.5 w-3.5 text-muted-foreground" />
@@ -451,6 +469,14 @@ export function Sidebar({
             </div>
           )
         })}
+        {query.trim() && filtered.length === 0 && (
+          <div className="px-2 py-8 text-center text-sm text-muted-foreground">
+            <p>{t('noSearchResults')}</p>
+            <Button type="button" variant="link" size="sm" onClick={() => setQuery('')}>
+              {t('clearSearch')}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Bottom toolbar */}

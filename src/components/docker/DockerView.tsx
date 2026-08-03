@@ -82,7 +82,7 @@ export function DockerView({ sshConfig }: Props) {
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         {info ? (
           <div className="text-sm text-muted-foreground">
             Docker <span className="font-medium text-foreground">{info.version}</span>
@@ -92,7 +92,7 @@ export function DockerView({ sshConfig }: Props) {
         ) : (
           <div className="text-sm text-muted-foreground">{t('remoteDocker')}</div>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
           <Button size="sm" onClick={() => setFormTarget(null)}>
             <Plus className="mr-1.5 h-4 w-4" />
             {t('createContainer')}
@@ -115,7 +115,7 @@ export function DockerView({ sshConfig }: Props) {
 
       {/* Status messages */}
       {error && (
-        <div className="flex items-center gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+        <div className="flex items-center gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive" role="alert">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           {error}
         </div>
@@ -134,6 +134,16 @@ export function DockerView({ sshConfig }: Props) {
             </tr>
           </thead>
           <tbody>
+            {containers.length === 0 && !loading && !error && (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center">
+                  <p className="text-sm text-muted-foreground">{t('noContainers')}</p>
+                  <Button variant="link" size="sm" onClick={() => setFormTarget(null)}>
+                    {t('createContainer')}
+                  </Button>
+                </td>
+              </tr>
+            )}
             {containers.map((c) => {
               const running = c.status.toLowerCase().includes('up')
               const busy = actingId === c.id
@@ -166,6 +176,7 @@ export function DockerView({ sshConfig }: Props) {
                           variant="ghost"
                           size="icon-xs"
                           title={t('stop')}
+                          aria-label={`${t('stop')} ${c.names}`}
                           disabled={busy}
                           onClick={() => void onControl(c.id, 'stop')}
                         >
@@ -176,6 +187,7 @@ export function DockerView({ sshConfig }: Props) {
                           variant="ghost"
                           size="icon-xs"
                           title={t('start')}
+                          aria-label={`${t('start')} ${c.names}`}
                           disabled={busy}
                           onClick={() => void onControl(c.id, 'start')}
                         >
@@ -186,6 +198,7 @@ export function DockerView({ sshConfig }: Props) {
                         variant="ghost"
                         size="icon-xs"
                         title={t('restart')}
+                        aria-label={`${t('restart')} ${c.names}`}
                         disabled={busy}
                         onClick={() => void onControl(c.id, 'restart')}
                       >
@@ -195,6 +208,7 @@ export function DockerView({ sshConfig }: Props) {
                         variant="ghost"
                         size="icon-xs"
                         title={t('viewLogs')}
+                        aria-label={`${t('viewLogs')} ${c.names}`}
                         disabled={busy}
                         onClick={() => setLogsTarget(c)}
                       >
@@ -204,6 +218,7 @@ export function DockerView({ sshConfig }: Props) {
                         variant="ghost"
                         size="icon-xs"
                         title={t('editContainer')}
+                        aria-label={`${t('editContainer')} ${c.names}`}
                         disabled={busy}
                         onClick={() => setFormTarget(c)}
                       >
@@ -213,6 +228,7 @@ export function DockerView({ sshConfig }: Props) {
                         variant="ghost"
                         size="icon-xs"
                         title={t('deleteContainer')}
+                        aria-label={`${t('deleteContainer')} ${c.names}`}
                         disabled={busy}
                         onClick={() => setDeleteTarget(c)}
                       >
@@ -231,16 +247,7 @@ export function DockerView({ sshConfig }: Props) {
                 </td>
               </tr>
             )}
-            {!loading && containers.length === 0 && !error && (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-4 py-8 text-center text-sm text-muted-foreground"
-                >
-                  {t('noContainers')}
-                </td>
-              </tr>
-            )}
+
           </tbody>
         </table>
       </div>

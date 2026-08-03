@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { KeyRound, Lock } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, Loader2, Lock } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
 import { groupDisplayName } from '@/lib/groups'
@@ -26,7 +26,7 @@ interface ServerFormModalProps {
   groups: ServerGroup[]
   initial?: Server | null
   onClose: () => void
-  onSave: (server: Server) => void
+  onSave: (server: Server) => void | Promise<void>
 }
 
 const emptyForm = (groupId: string): Server => ({
@@ -82,13 +82,15 @@ function ServerFormInner({
 }: {
   groups: ServerGroup[]
   initial?: Server | null
-  onSave: (server: Server) => void
+  onSave: (server: Server) => void | Promise<void>
   onCancel: () => void
 }) {
   const { t } = useI18n()
   const [form, setForm] = useState<Server>(
     initial ? { ...initial } : emptyForm(groups[0]?.id ?? ''),
   )
+  const [submitting, setSubmitting] = useState(false)
+  const [showSecret, setShowSecret] = useState(false)
 
   // Validate host: IPv4, IPv6, or domain name (with optional port already separate).
   const validateHost = (value: string): boolean => {
@@ -122,18 +124,22 @@ function ServerFormInner({
   const set = <K extends keyof Server>(key: K, value: Server[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
     const trimmedHost = form.host.trim()
-    if (!validateHost(trimmedHost)) {
-      return
+    if (!validateHost(trimmedHost) || !form.name.trim() || !form.username.trim()) return
+    setSubmitting(true)
+    try {
+      await onSave({
+        ...form,
+        id: form.id || `s-${Date.now()}`,
+        name: form.name.trim(),
+        host: trimmedHost,
+        username: form.username.trim(),
+      })
+    } finally {
+      setSubmitting(false)
     }
-    onSave({
-      ...form,
-      id: form.id || `s-${Date.now()}`,
-      host: trimmedHost,
-      username: form.username.trim(),
-    })
   }
 
   return (
@@ -181,11 +187,12 @@ function ServerFormInner({
                   required
                   value={form.host}
                   aria-invalid={!isHostValid && form.host.length > 0}
+                  aria-describedby={!isHostValid && form.host.length > 0 ? 'host-error' : undefined}
                   onChange={(e) => set('host', e.target.value)}
                   placeholder="10.0.1.11"
                 />
                 {form.host.length > 0 && !isHostValid && (
-                  <p className="mt-1 text-xs text-destructive">{t('errInvalidHost')}</p>
+                  <p id="host-error" className="mt-1 text-xs text-destructive" role="alert">{t('errInvalidHost')}</p>
                 )}
               </Field>
             </div>
@@ -230,12 +237,23 @@ function ServerFormInner({
 
           {form.authType === 'password' ? (
             <Field label={t('password')}>
-              <Input
-                type="password"
-                value={form.password ?? ''}
-                onChange={(e) => set('password', e.target.value)}
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <Input
+                  type={showSecret ? 'text' : 'password'}
+                  value={form.password ?? ''}
+                  onChange={(e) => set('password', e.target.value)}
+                  placeholder="••••••••"
+                  className="pr-9"
+                />
+                <button
+                  type="button"
+                  aria-label={showSecret ? t('hidePassword') : t('showPassword')}
+                  onClick={() => setShowSecret((visible) => !visible)}
+                  className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </Field>
           ) : (
             <div className="space-y-4">
@@ -261,7 +279,10 @@ function ServerFormInner({
             <Button type="button" variant="outline" onClick={onCancel}>
               {t('cancel')}
             </Button>
-            <Button type="submit" disabled={!isHostValid}>{t('save')}</Button>
+            <Button type="submit" disabled={!isHostValid || !form.name.trim() || !form.username.trim() || submitting} aria-busy={submitting}>
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t('save')}
+            </Button>
           </DialogFooter>
         </form>
   )
