@@ -142,11 +142,11 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   return (
     <div className="flex h-full flex-col bg-background">
       {/* Header */}
-      <header className="flex items-center gap-3 border-b border-border px-5 py-3">
+      <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
         <div className="min-w-0">
           <div className="flex items-center gap-1">
             <h1 className="truncate text-base font-semibold">{server.name}</h1>
-            <Button variant="ghost" size="icon-xs" onClick={onEdit}>
+            <Button variant="ghost" size="icon-xs" aria-label={t('editServer')} onClick={onEdit}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -155,7 +155,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           </div>
         </div>
 
-        <div className="ml-2 flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs">
+        <div className="ml-0 flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs sm:ml-2" role="status" aria-live="polite">
           <span className={cn('h-2 w-2 rounded-full', meta.color)} />
           {meta.label}
         </div>
@@ -171,8 +171,9 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
               size="sm"
               onClick={connect}
               disabled={status === 'connecting'}
+              aria-busy={status === 'connecting'}
             >
-              <Plug className="h-4 w-4" />
+              {status === 'connecting' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
               {t('connect')}
             </Button>
           )}
@@ -195,8 +196,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           }}
           className="min-h-0 flex-1 gap-0"
         >
-          <div className="border-b border-border px-3 py-2">
-            <TabsList variant="line">
+          <div className="overflow-x-auto border-b border-border px-3 py-2">
+            <TabsList variant="line" className="min-w-max">
               <TabsTrigger value="terminal">
                 <TerminalSquare className="h-4 w-4" />
                 {t('terminal')}
@@ -284,7 +285,7 @@ function DisconnectedState({
           {status === 'error' ? t('connectionFailed') : t('notConnected')}
         </p>
         {error ? (
-          <p className="mt-1 max-w-md font-mono text-xs text-destructive">{error}</p>
+          <p className="mt-1 max-w-md break-words font-mono text-xs text-destructive" role="alert">{error}</p>
         ) : (
           <p className="text-xs text-muted-foreground/70">{t('connectPrompt')}</p>
         )}

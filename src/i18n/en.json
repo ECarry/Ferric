@@ -1,5 +1,8 @@
 {
   "searchServers": "Search servers...",
+  "loadingConfiguration": "Loading configuration...",
+  "configurationLoadFailed": "Failed to load configuration.",
+  "retry": "Try again",
   "groups": "Groups",
   "newGroup": "New group",
   "groupName": "Group name",

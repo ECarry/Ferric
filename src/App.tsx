@@ -5,9 +5,12 @@ import { MainPanel } from '@/components/MainPanel'
 import { ServerFormModal } from '@/components/ServerFormModal'
 import { deleteServerSecret } from '@/lib/store'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { useI18n } from '@/i18n'
 import type { ConnectionStatus, Server, ServerGroup } from '@/types'
 
 function App() {
+  const { t } = useI18n()
   const { config, updateConfig, isLoading: configLoading, error: configError } = useAppConfig()
   const servers = config?.servers ?? []
   const groups = config?.groups ?? []
@@ -178,11 +181,23 @@ function App() {
   }
 
   if (configLoading && !config) {
-    return <div className="flex h-screen items-center justify-center">Loading...</div>
+    return (
+      <div className="flex h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground" role="status">
+        <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />
+        {t('loadingConfiguration')}
+      </div>
+    )
   }
 
   if (configError && !config) {
-    return <div className="flex h-screen items-center justify-center text-destructive">Failed to load configuration.</div>
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-background px-4 text-center" role="alert">
+        <p className="text-sm text-destructive">{t('configurationLoadFailed')}</p>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          {t('retry')}
+        </Button>
+      </div>
+    )
   }
 
   return (

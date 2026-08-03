@@ -140,7 +140,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               {Object.entries(TERMINAL_THEMES).map(([id, th]) => (
                 <button
                   key={id}
+                  type="button"
                   onClick={() => update({ themeId: id })}
+                  aria-pressed={settings.themeId === id}
                   className={cn(
                     'flex flex-col gap-1.5 rounded-lg border-2 p-2 text-left transition-colors',
                     settings.themeId === id

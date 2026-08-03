@@ -139,7 +139,7 @@ function ServerFormInner({
   return (
 
         <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label={t('name')}>
               <Input
                 required
@@ -174,8 +174,8 @@ function ServerFormInner({
             </Field>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="sm:col-span-2">
               <Field label={t('host')}>
                 <Input
                   required
@@ -192,6 +192,7 @@ function ServerFormInner({
             <Field label={t('port')}>
               <Input
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={65535}
                 required
@@ -298,8 +299,9 @@ function AuthTab({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        'flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors',
+        'flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50',
         active
           ? 'border-primary bg-primary/10 text-foreground'
           : 'border-border text-muted-foreground hover:bg-muted',

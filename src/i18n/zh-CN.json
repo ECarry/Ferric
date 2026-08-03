@@ -1,5 +1,8 @@
 {
   "searchServers": "搜索服务器...",
+  "loadingConfiguration": "正在加载配置...",
+  "configurationLoadFailed": "配置加载失败",
+  "retry": "重试",
   "groups": "分组",
   "newGroup": "新建分组",
   "groupName": "分组名称",
