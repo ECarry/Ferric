@@ -18,6 +18,8 @@ export interface TransferTask {
   transferred: number
   total: number
   error?: string
+  startedAt: number
+  finishedAt?: number
 }
 
 interface StartTransferOptions {
@@ -44,6 +46,7 @@ export function useSftpTransferManager(sessionId: string) {
       status: 'running',
       transferred: 0,
       total,
+      startedAt: Date.now(),
     }])
 
     const onProgress = (progress: TransferProgress) => {
@@ -63,12 +66,14 @@ export function useSftpTransferManager(sessionId: string) {
       await run(id)
       updateTask(id, {
         status: cancelledIds.current.has(id) ? 'cancelled' : 'completed',
+        finishedAt: Date.now(),
       })
       cancelledIds.current.delete(id)
     } catch (error) {
       updateTask(id, {
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),
+        finishedAt: Date.now(),
       })
       throw error
     } finally {
@@ -89,10 +94,15 @@ export function useSftpTransferManager(sessionId: string) {
       updateTask(id, {
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),
+        finishedAt: Date.now(),
       })
       throw error
     }
   }, [updateTask])
 
-  return { tasks, start, cancel }
+  const history = tasks.filter((task) =>
+    task.status === 'completed' || task.status === 'cancelled' || task.status === 'failed',
+  )
+
+  return { tasks, history, start, cancel }
 }

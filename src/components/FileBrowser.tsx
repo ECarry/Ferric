@@ -87,7 +87,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const directoryQuery = useSftpDirectory(sessionId, path)
   const { mkdir, rename, remove, invalidateDirectory } = useSftpMutations(sessionId, path)
   const transferManager = useSftpTransferManager(sessionId)
-  const { tasks } = transferManager
+  const { tasks, history } = transferManager
   const files = directoryQuery.data ?? []
   const loading = directoryQuery.isLoading || directoryQuery.isFetching
   const [busy, setBusy] = useState<string | null>(null)
@@ -646,6 +646,11 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
 
       {tasks.length > 0 && (
         <div className="max-h-40 space-y-1 overflow-auto border-t border-border px-4 py-2 text-xs">
+          {history.length > 0 && (
+            <div className="pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+              History ({history.length})
+            </div>
+          )}
           {tasks.map((task) => {
             const running = task.status === 'running' || task.status === 'cancelling'
             const percent = task.total > 0 ? Math.min(100, Math.floor((task.transferred / task.total) * 100)) : 0
