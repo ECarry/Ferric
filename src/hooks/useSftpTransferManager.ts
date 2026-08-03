@@ -55,6 +55,11 @@ export function useSftpTransferManager(sessionId: string) {
 
     if (paused) {
       await new Promise<void>((resolve) => resumeWaiters.current.push(resolve))
+      if (cancelledIds.current.has(id)) {
+        updateTask(id, { status: 'cancelled', finishedAt: Date.now() })
+        cancelledIds.current.delete(id)
+        return id
+      }
       updateTask(id, { status: 'running' })
     }
 
