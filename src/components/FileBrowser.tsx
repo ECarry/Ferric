@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSftpDirectory, useSftpHome, useSftpMutations } from '@/hooks/useSftp'
+import { useSftpTransferManager } from '@/hooks/useSftpTransferManager'
 import {
   ArrowUp,
   ChevronRight,
@@ -85,6 +86,8 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const directoryQuery = useSftpDirectory(sessionId, path)
   const { mkdir, rename, remove, invalidateDirectory } = useSftpMutations(sessionId, path)
+  const transferManager = useSftpTransferManager(sessionId)
+  const { tasks } = transferManager
   const files = directoryQuery.data ?? []
   const loading = directoryQuery.isLoading || directoryQuery.isFetching
   const [busy, setBusy] = useState<string | null>(null)
@@ -117,6 +120,14 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     }
   }
 
+  const onCancelTask = async (id: string) => {
+    try {
+      await transferManager.cancel(id)
+    } catch (e) {
+      setError(formatAppError(e, t))
+    }
+  }
+
   const navigate = useCallback((target: string) => {
     setRequestedPath(target)
     setSelected(null)
@@ -131,27 +142,16 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const onUpload = async () => {
     const picked = await openDialog({ multiple: false, directory: false })
     if (typeof picked !== 'string') return
-    setBusy(t('uploading'))
     setError(null)
-    setCancelling(false)
-    setProgress({ transferred: 0, total: 0 })
-    const transferId = createTransferId()
-    setActiveTransferId(transferId)
-    const unlisten = await onUploadProgress((p) => {
-      if (p.transferId === transferId)
-        setProgress({ transferred: p.transferred, total: p.total })
-    })
     try {
-      await sftpUpload(sessionId, transferId, picked, joinPath(path, baseName(picked)))
+      await transferManager.start({
+        kind: 'upload',
+        label: baseName(picked),
+        run: (transferId) => sftpUpload(sessionId, transferId, picked, joinPath(path, baseName(picked))),
+      })
       await invalidateDirectory()
     } catch (e) {
       setError(formatAppError(e, t))
-    } finally {
-      unlisten()
-      setBusy(null)
-      setProgress(null)
-      setCancelling(false)
-      setActiveTransferId(null)
     }
   }
 
@@ -643,6 +643,32 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {tasks.length > 0 && (
+        <div className="max-h-40 space-y-1 overflow-auto border-t border-border px-4 py-2 text-xs">
+          {tasks.map((task) => {
+            const running = task.status === 'running' || task.status === 'cancelling'
+            const percent = task.total > 0 ? Math.min(100, Math.floor((task.transferred / task.total) * 100)) : 0
+            return (
+              <div key={task.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">{task.label}</span>
+                <span className="text-muted-foreground">{task.status}</span>
+                {task.total > 0 && <span className="tabular-nums">{percent}%</span>}
+                {running && (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    title={t('cancelTransfer')}
+                    onClick={() => void onCancelTask(task.id)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Status bar */}
       <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
