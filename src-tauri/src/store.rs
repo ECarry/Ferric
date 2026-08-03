@@ -149,17 +149,25 @@ pub fn save_config(app: AppHandle, config: Config) -> Result<(), AppError> {
     let mut to_write = config.clone();
 
     for server in to_write.servers.iter_mut() {
-        match server.password.take() {
-            Some(pw) if !pw.is_empty() => write_secret(&server.id, &pw)?,
-            // Empty/absent password on save leaves any existing keychain entry
-            // untouched so editing other fields doesn't wipe the secret.
-            _ => {}
-        }
-        match server.key_passphrase.take() {
-            Some(pp) if !pp.is_empty() => {
-                write_secret(&passphrase_account(&server.id), &pp)?
+        if server.auth_type == "password" {
+            match server.password.take() {
+                Some(pw) if !pw.is_empty() => write_secret(&server.id, &pw)?,
+                // Empty/absent password on save leaves any existing keychain entry
+                // untouched so editing other fields doesn't wipe the secret.
+                _ => {}
             }
-            _ => {}
+            delete_secret(&passphrase_account(&server.id));
+        } else if server.auth_type == "key" {
+            match server.key_passphrase.take() {
+                Some(pp) if !pp.is_empty() => {
+                    write_secret(&passphrase_account(&server.id), &pp)?
+                }
+                _ => {}
+            }
+            delete_secret(&server.id);
+        } else {
+            server.password = None;
+            server.key_passphrase = None;
         }
     }
 

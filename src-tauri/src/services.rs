@@ -19,45 +19,56 @@ pub struct RemoteService {
 
 async fn exec_remote(config: &ConnectConfig, command: &str) -> Result<String, AppError> {
     let session = connect_and_auth(config).await.map_err(AppError::from)?;
-    let mut channel = session
-        .channel_open_session()
-        .await
-        .map_err(|e| AppError::new("errServiceChannel").detail(e))?;
-    channel
-        .exec(true, command)
-        .await
-        .map_err(|e| AppError::new("errServiceCommand").detail(e))?;
+    let result = async {
+        let mut channel = session
+            .channel_open_session()
+            .await
+            .map_err(|e| AppError::new("errServiceChannel").detail(e))?;
+        channel
+            .exec(true, command)
+            .await
+            .map_err(|e| AppError::new("errServiceCommand").detail(e))?;
 
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let mut exit_status = None;
-    let deadline = tokio::time::sleep(COMMAND_TIMEOUT);
-    tokio::pin!(deadline);
-    while let Some(message) = tokio::select! {
-        _ = &mut deadline => return Err(AppError::new("errServiceTimeout")),
-        message = channel.wait() => message,
-    } {
-        match message {
-            ChannelMsg::Data { data } => {
-                if stdout.len().saturating_add(data.len()) > MAX_OUTPUT {
-                    return Err(AppError::new("errRemoteOutputTooLarge"));
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut exit_status = None;
+        let deadline = tokio::time::sleep(COMMAND_TIMEOUT);
+        tokio::pin!(deadline);
+        while let Some(message) = tokio::select! {
+            _ = &mut deadline => return Err(AppError::new("errServiceTimeout")),
+            message = channel.wait() => message,
+        } {
+            match message {
+                ChannelMsg::Data { data } => {
+                    if stdout.len().saturating_add(data.len()) > MAX_OUTPUT {
+                        return Err(AppError::new("errRemoteOutputTooLarge"));
+                    }
+                    stdout.extend_from_slice(&data);
                 }
-                stdout.extend_from_slice(&data);
+                ChannelMsg::ExtendedData { data, ext } if ext == 1 => {
+                    if stderr.len().saturating_add(data.len()) > MAX_OUTPUT {
+                        return Err(AppError::new("errRemoteOutputTooLarge"));
+                    }
+                    stderr.extend_from_slice(&data);
+                }
+                ChannelMsg::ExitStatus { exit_status: status } => exit_status = Some(status),
+                _ => {}
             }
-            ChannelMsg::ExtendedData { data, ext } if ext == 1 => {
-                stderr.extend_from_slice(&data);
-            }
-            ChannelMsg::ExitStatus { exit_status: status } => exit_status = Some(status),
-            _ => {}
         }
-    }
 
-    let output = String::from_utf8_lossy(&stdout).trim().to_string();
-    if exit_status.is_some_and(|status| status != 0) {
-        let detail = String::from_utf8_lossy(&stderr).trim().to_string();
-        return Err(AppError::new("errServiceCommandFailed").detail(detail));
+        let output = String::from_utf8_lossy(&stdout).trim().to_string();
+        if exit_status.is_some_and(|status| status != 0) {
+            let detail = String::from_utf8_lossy(&stderr).trim().to_string();
+            return Err(AppError::new("errServiceCommandFailed").detail(detail));
+        }
+        Ok(output)
     }
-    Ok(output)
+    .await;
+
+    let _ = session
+        .disconnect(russh::Disconnect::ByApplication, "", "English")
+        .await;
+    result
 }
 
 #[tauri::command]

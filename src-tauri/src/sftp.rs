@@ -289,6 +289,26 @@ pub async fn sftp_download(
     Ok(())
 }
 
+async fn create_download_root(
+    parent: &std::path::Path,
+    folder_name: &str,
+) -> Result<std::path::PathBuf, AppError> {
+    for suffix in 0..1000u32 {
+        let name = if suffix == 0 {
+            folder_name.to_string()
+        } else {
+            format!("{folder_name} ({suffix})")
+        };
+        let candidate = parent.join(name);
+        match tokio::fs::create_dir(&candidate).await {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(AppError::new("errSftpLocalFile").detail(error)),
+        }
+    }
+    Err(AppError::new("errSftpLocalFile").detail("too many download directory name conflicts"))
+}
+
 /// Recursively download a remote directory into `local_path` (the local parent
 /// directory). The remote folder is recreated as a subdirectory named after its
 /// basename. Emits the same `sftp:download-progress` events as file downloads,
@@ -320,7 +340,8 @@ pub async fn sftp_download_dir(
         .next()
         .filter(|s| !s.is_empty())
         .unwrap_or("download");
-    let root = PathBuf::from(&local_path).join(folder_name);
+    let local_parent = PathBuf::from(&local_path);
+    let root = create_download_root(&local_parent, folder_name).await?;
 
     // Walk the tree iteratively: collect dirs to create, files to download,
     // and the total byte count for the progress bar.

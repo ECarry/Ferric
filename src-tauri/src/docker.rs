@@ -71,13 +71,11 @@ async fn exec_remote_cmd(config: &ConnectConfig, cmd: &str) -> Result<String, Ap
     // Propagate the structured connection/auth error untouched.
     let session = connect_and_auth(config).await.map_err(AppError::from)?;
 
-    let result = exec_on_session(&session, cmd).await?;
-
+    let result = exec_on_session(&session, cmd).await;
     let _ = session
         .disconnect(russh::Disconnect::ByApplication, "", "English")
         .await;
-
-    Ok(result)
+    result
 }
 
 /// Run a command on an existing session and collect stdout/stderr/exit.
@@ -149,15 +147,19 @@ async fn exec_remote_batch(
     let session = connect_and_auth(config).await.map_err(AppError::from)?;
 
     let mut results = Vec::with_capacity(cmds.len());
-    for cmd in cmds {
-        results.push(exec_on_session(&session, cmd).await?);
+    let result = async {
+        for cmd in cmds {
+            results.push(exec_on_session(&session, cmd).await?);
+        }
+        Ok::<_, AppError>(results)
     }
+    .await;
 
     let _ = session
         .disconnect(russh::Disconnect::ByApplication, "", "English")
         .await;
 
-    Ok(results)
+    result
 }
 
 fn is_valid_container_name(value: &str) -> bool {

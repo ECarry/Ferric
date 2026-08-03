@@ -107,15 +107,23 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   // Reflect backend-initiated disconnects (shell exit, network drop).
   useEffect(() => {
     if (!sessionId) return
+    let disposed = false
     let unlisten: (() => void) | undefined
     onSshClosed(sessionId, () => {
       sessionRef.current = null
       setSessionId(null)
       setStatus('disconnected')
     }).then((fn) => {
-      unlisten = fn
+      if (disposed) {
+        fn()
+      } else {
+        unlisten = fn
+      }
     })
-    return () => unlisten?.()
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
   }, [sessionId])
 
   const connect = useCallback(async (passwordOverride?: string) => {

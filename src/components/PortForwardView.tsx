@@ -70,7 +70,7 @@ export function PortForwardView({ sshConfig }: PortForwardViewProps) {
         localPort,
         remoteHost: form.remoteHost.trim(),
         remotePort,
-        status: 'starting',
+        status: 'active',
       })
       setForm({ localPort: '', remoteHost: '127.0.0.1', remotePort: '' })
     } catch (e) {
@@ -108,9 +108,19 @@ export function PortForwardView({ sshConfig }: PortForwardViewProps) {
         }
       }),
     )
-    const unlistenFns: (() => void)[] = []
-    Promise.all(unlistenPromises).then((fns) => unlistenFns.push(...fns))
-    return () => unlistenFns.forEach((fn) => fn())
+    let disposed = false
+    let unlistenFns: (() => void)[] = []
+    Promise.all(unlistenPromises).then((fns) => {
+      if (disposed) {
+        fns.forEach((fn) => fn())
+      } else {
+        unlistenFns = fns
+      }
+    })
+    return () => {
+      disposed = true
+      unlistenFns.forEach((fn) => fn())
+    }
   }, [tunnels, updateTunnel])
 
   return (
