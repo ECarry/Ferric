@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useDockerInfo, useDockerMutations } from '@/hooks/useDocker'
-import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, ScrollText, Square, Trash2 } from 'lucide-react'
+import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, Search, ScrollText, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ContainerFormModal } from '@/components/docker/ContainerFormModal'
 import { ContainerLogsDialog } from '@/components/docker/ContainerLogsDialog'
 import { cn } from '@/lib/utils'
@@ -30,12 +32,24 @@ export function DockerView({ sshConfig }: Props) {
   const [logsTarget, setLogsTarget] = useState<DockerContainer | null>(null)
   const [actingId, setActingId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'stopped'>('all')
   const dockerQuery = useDockerInfo(sshConfig)
   const { control, create, rename, remove } = useDockerMutations(sshConfig)
   const info = dockerQuery.data?.[0] ?? null
-  const containers = dockerQuery.data?.[1] ?? []
+  const containers = useMemo(() => dockerQuery.data?.[1] ?? [], [dockerQuery.data])
   const loading = dockerQuery.isLoading || dockerQuery.isFetching
   const error = actionError ?? (dockerQuery.error ? formatAppError(dockerQuery.error, t) : null)
+  const filteredContainers = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+    return containers.filter((container) => {
+      const running = container.status.toLowerCase().includes('up')
+      const matchesStatus = statusFilter === 'all' || (statusFilter === 'running' ? running : !running)
+      const matchesQuery = !normalizedQuery || [container.names, container.image, container.id, container.status]
+        .some((value) => value.toLowerCase().includes(normalizedQuery))
+      return matchesStatus && matchesQuery
+    })
+  }, [containers, query, statusFilter])
 
   const onControl = async (id: string, action: 'start' | 'stop' | 'restart') => {
     setActingId(id)
@@ -113,6 +127,29 @@ export function DockerView({ sshConfig }: Props) {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
+        <div className="relative min-w-48 flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t('dockerSearch')}
+            aria-label={t('dockerSearch')}
+            className="h-8 pl-8"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+          <SelectTrigger className="h-8 w-32" aria-label={t('status')}>
+            <SelectValue>{(value) => value === 'running' ? t('running') : value === 'stopped' ? t('stopped') : t('allStatuses')}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('allStatuses')}</SelectItem>
+            <SelectItem value="running">{t('running')}</SelectItem>
+            <SelectItem value="stopped">{t('stopped')}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Status messages */}
       {error && (
         <div className="flex items-center gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive" role="alert">
@@ -144,7 +181,7 @@ export function DockerView({ sshConfig }: Props) {
                 </td>
               </tr>
             )}
-            {containers.map((c) => {
+            {filteredContainers.map((c) => {
               const running = c.status.toLowerCase().includes('up')
               const busy = actingId === c.id
               return (
@@ -248,6 +285,13 @@ export function DockerView({ sshConfig }: Props) {
               </tr>
             )}
 
+            {containers.length > 0 && filteredContainers.length === 0 && !loading && (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                  {t('noMatchingContainers')}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

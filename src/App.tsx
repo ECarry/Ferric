@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { Menu } from 'lucide-react'
 import { useAppConfig } from '@/hooks/useAppConfig'
 import { Sidebar } from '@/components/Sidebar'
 import { MainPanel } from '@/components/MainPanel'
@@ -30,6 +31,7 @@ function App() {
   )
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Server | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
 
   const handleStatusChange = useCallback(
@@ -203,11 +205,16 @@ function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar
+        mobileOpen={sidebarOpen}
+        onCloseMobile={() => setSidebarOpen(false)}
         groups={groups}
         servers={servers}
         activeServerId={activeId}
         connectedIds={connectedIds}
-        onSelect={selectServer}
+        onSelect={(server) => {
+          selectServer(server)
+          setSidebarOpen(false)
+        }}
         onAddServer={openAdd}
         onEditServer={openEdit}
         onAddGroup={addGroup}
@@ -219,7 +226,26 @@ function App() {
         onDeleteServer={deleteServer}
       />
 
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label={t('closeSidebar')}
+          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       <main className="relative min-w-0 flex-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          aria-label={t('openSidebar')}
+          onClick={() => setSidebarOpen(true)}
+          className="absolute top-3 left-3 z-20 md:hidden"
+        >
+          <Menu className="h-4 w-4" />
+        </Button>
         {openServers.length === 0 ? (
           <MainPanel server={undefined} onEdit={() => {}} />
         ) : (

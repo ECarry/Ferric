@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Minus, Plus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -39,12 +39,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [settings, setSettings] = useState<TerminalSettings>(() =>
     loadTerminalSettings(),
   )
+  const [saved, setSaved] = useState(false)
 
+  useEffect(() => {
+    if (!saved) return
+    const timer = window.setTimeout(() => setSaved(false), 1600)
+    return () => window.clearTimeout(timer)
+  }, [saved])
 
   const update = (patch: Partial<TerminalSettings>) => {
     const next = { ...settings, ...patch }
     setSettings(next)
     saveTerminalSettings(next)
+    setSaved(true)
   }
 
   const reset = () => {
@@ -56,6 +63,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
     setSettings(defaults)
     saveTerminalSettings(defaults)
+    setSaved(true)
   }
 
   const theme = getTerminalTheme(settings.themeId)
@@ -207,6 +215,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         </div>
 
         <DialogFooter>
+          <span className="mr-auto text-xs text-muted-foreground" role="status" aria-live="polite">
+            {saved ? t('settingsSaved') : ''}
+          </span>
           <Button variant="outline" onClick={reset}>
             <RotateCcw className="mr-2 h-4 w-4" />
             {t('resetDefaults')}
