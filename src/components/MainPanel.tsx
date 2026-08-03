@@ -260,7 +260,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
             <TerminalView sessionId={sessionId} active={active} />
           </TabsContent>
           {mountedTabs.has('sftp') && (
-            <TabsContent value="sftp" className="min-h-0">
+            <TabsContent value="sftp" keepMounted className="min-h-0">
               {sftpId ? (
                 <FileBrowser key={sftpId} sessionId={sftpId} />
               ) : (
