@@ -15,6 +15,7 @@ use crate::error::AppError;
 use crate::ssh::{connect_and_auth, Client, ConnectConfig};
 
 const SFTP_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const MAX_CONCURRENT_TRANSFERS: usize = 3;
 
 /// A live SFTP session plus the SSH handle that keeps its connection open.
 struct SftpConn {
@@ -35,7 +36,7 @@ impl Default for SftpManager {
         Self {
             sessions: Mutex::new(HashMap::new()),
             cancels: Arc::new(Mutex::new(HashMap::new())),
-            transfer_slots: Arc::new(Semaphore::new(3)),
+            transfer_slots: Arc::new(Semaphore::new(MAX_CONCURRENT_TRANSFERS)),
         }
     }
 }
