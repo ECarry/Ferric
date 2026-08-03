@@ -1,10 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Activity, Container, FolderTree, Loader2, Pencil, Plug, Power, TerminalSquare, Zap } from 'lucide-react'
 import type { ConnectionStatus, Server } from '@/types'
 import { cn } from '@/lib/utils'
-import { formatAppError } from '@/lib/error'
+import { formatAppError, isAppError } from '@/lib/error'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   onSshClosed,
@@ -39,6 +40,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [sftpId, setSftpId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [sessionPassword, setSessionPassword] = useState<string | null>(null)
+  const [passwordPrompt, setPasswordPrompt] = useState(false)
   const sessionRef = useRef<string | null>(null)
   const sftpRef = useRef<string | null>(null)
   const serverIdRef = useRef<string | undefined>(server?.id)
@@ -51,13 +54,13 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       port: server.port,
       username: server.username,
       authType: server.authType,
-      password: server.password,
+      password: server.password ?? sessionPassword ?? undefined,
       keyPath: server.keyPath,
       keyPassphrase: server.keyPassphrase,
       cols: 80,
       rows: 24,
     }
-  }, [server])
+  }, [server, sessionPassword])
 
   const reset = useCallback(() => {
     if (sessionRef.current) void sshDisconnect(sessionRef.current)
@@ -68,6 +71,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     setSftpId(null)
     setStatus('disconnected')
     setError(null)
+    setSessionPassword(null)
+    setPasswordPrompt(false)
   }, [])
 
   // Disconnect only when this panel unmounts (server closed / deleted).
@@ -112,17 +117,22 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     return () => unlisten?.()
   }, [sessionId])
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (passwordOverride?: string) => {
     if (!sshConfig) return
+    const config = passwordOverride === undefined
+      ? sshConfig
+      : { ...sshConfig, password: passwordOverride }
+    if (passwordOverride !== undefined) setSessionPassword(passwordOverride)
     setStatus('connecting')
     setError(null)
     try {
-      const id = await sshConnect(sshConfig)
+      const id = await sshConnect(config)
       sessionRef.current = id
       setSessionId(id)
       setStatus('connected')
+      setPasswordPrompt(false)
       // Open a separate SFTP session (best-effort; failure only disables SFTP).
-      sftpConnect(sshConfig)
+      sftpConnect(config)
         .then((sid) => {
           sftpRef.current = sid
           setSftpId(sid)
@@ -131,12 +141,16 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     } catch (e) {
       setStatus('error')
       setError(formatAppError(e, t))
+      if (isAppError(e) && e.code === 'errSshNoPassword') {
+        setPasswordPrompt(true)
+      }
     }
   }, [sshConfig, t])
 
   if (!server) return <WelcomeScreen />
 
   const connected = status === 'connected' && sessionId
+  const passwordRequired = server.authType === 'password' && (!server.password && !sessionPassword || passwordPrompt)
   const meta = { label: t(status === 'error' ? 'connectionFailed' : status), color: statusColor[status] }
 
   return (
@@ -169,7 +183,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           ) : (
             <Button
               size="sm"
-              onClick={connect}
+              onClick={() => void connect()}
               disabled={status === 'connecting'}
               aria-busy={status === 'connecting'}
             >
@@ -185,6 +199,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
         <DisconnectedState
           status={status}
           error={error}
+          passwordRequired={passwordRequired}
           onConnect={connect}
         />
       ) : (
@@ -268,15 +283,25 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
 function DisconnectedState({
   status,
   error,
+  passwordRequired,
   onConnect,
 }: {
   status: ConnectionStatus
   error: string | null
-  onConnect: () => void
+  passwordRequired: boolean
+  onConnect: (password?: string) => void
 }) {
   const { t } = useI18n()
+  const [password, setPassword] = useState('')
+
+  const submitPassword = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!password) return
+    onConnect(password)
+  }
+
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
         <Plug className="h-7 w-7 text-muted-foreground" />
       </div>
@@ -284,15 +309,39 @@ function DisconnectedState({
         <p className="text-sm text-muted-foreground">
           {status === 'error' ? t('connectionFailed') : t('notConnected')}
         </p>
-        {error ? (
-          <p className="mt-1 max-w-md break-words font-mono text-xs text-destructive" role="alert">{error}</p>
-        ) : (
-          <p className="text-xs text-muted-foreground/70">{t('connectPrompt')}</p>
+        {error && (
+          <p className="mt-1 max-w-md break-words font-mono text-xs text-destructive" role="alert">
+            {error}
+          </p>
         )}
       </div>
-      <Button onClick={onConnect} disabled={status === 'connecting'}>
-        {status === 'connecting' ? t('connecting') : t('connectNow')}
-      </Button>
+      {passwordRequired ? (
+        <form onSubmit={submitPassword} className="w-full max-w-sm space-y-3 text-left">
+          <div className="rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs">
+            <p className="text-muted-foreground">$ {t('passwordPrompt')}</p>
+            <p className="mt-1 text-muted-foreground/70">{t('passwordPromptHint')}</p>
+          </div>
+          <Input
+            autoFocus
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder={t('passwordPromptPlaceholder')}
+            aria-label={t('password')}
+            disabled={status === 'connecting'}
+          />
+          <Button type="submit" className="w-full" disabled={!password || status === 'connecting'}>
+            {status === 'connecting' ? t('connecting') : t('connectNow')}
+          </Button>
+        </form>
+      ) : (
+        <>
+          {!error && <p className="text-xs text-muted-foreground/70">{t('connectPrompt')}</p>}
+          <Button onClick={() => onConnect()} disabled={status === 'connecting'}>
+            {status === 'connecting' ? t('connecting') : t('connectNow')}
+          </Button>
+        </>
+      )}
     </div>
   )
 }
