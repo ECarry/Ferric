@@ -615,22 +615,22 @@ function HelpDialog() {
         <HelpCircle className="h-5 w-5" />
         {update && !installed && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />}
       </Button>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t('help')}</DialogTitle>
           <DialogDescription>{t('currentVersion', { version: version || '—' })}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-2">
+        <div className="min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-1">
           {update && (
-            <div>
-              <p>{t('updateAvailable', { version: update.version })}</p>
+            <div className="min-w-0 space-y-2">
+              <p className="break-words">{t('updateAvailable', { version: update.version })}</p>
               {update.body && (
-                <pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs">{update.body}</pre>
+                <pre className="max-h-[min(45vh,20rem)] min-w-0 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs leading-relaxed">{update.body}</pre>
               )}
             </div>
           )}
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          {message && <p className="text-sm text-green-600">{message}</p>}
+          {error && <p className="break-words text-sm text-destructive" role="alert">{error}</p>}
+          {message && <p className="break-words text-sm text-green-600" role="status">{message}</p>}
           {!update && !error && !message && (
             <p className="text-sm text-muted-foreground">{t('updateNotAvailable')}</p>
           )}
