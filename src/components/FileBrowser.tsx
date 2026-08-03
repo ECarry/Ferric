@@ -3,11 +3,15 @@ import { useSftpDirectory, useSftpHome, useSftpMutations } from '@/hooks/useSftp
 import {
   ArrowUp,
   ChevronRight,
+  Clipboard,
+  Copy,
   Download,
   File as FileIcon,
   FolderClosed,
+  FolderInput,
   FolderPlus,
   Home,
+  Info,
   Loader2,
   Pencil,
   RefreshCw,
@@ -101,6 +105,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const [promptValue, setPromptValue] = useState('')
   const [promptBusy, setPromptBusy] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+  const [propertiesFile, setPropertiesFile] = useState<typeof selectedFile>(null)
   const dragPathsRef = useRef<string[]>([])
 
   const onCancel = async () => {
@@ -119,6 +124,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   }, [])
 
   const selectedFile = files.find((f) => f.name === selected) ?? null
+  const selectedRemotePath = selectedFile ? joinPath(path, selectedFile.name) : path
   const queryError = directoryQuery.error ? formatAppError(directoryQuery.error, t) : null
   const visibleError = error ?? queryError
 
@@ -244,6 +250,36 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         navigate(path)
       },
     })
+  }
+
+  const onOpen = () => {
+    if (selectedFile?.type === 'dir') void navigate(selectedRemotePath)
+  }
+
+  const onMoveTo = () => {
+    if (!selectedFile) return
+    setPromptValue(path)
+    setPromptDialog({
+      title: t('moveTo'),
+      label: t('moveToPrompt'),
+      initialValue: path,
+      showInput: true,
+      onConfirm: async (destination) => {
+        await rename.mutateAsync({
+          from: selectedRemotePath,
+          to: joinPath(destination.replace(/\/$/, '') || '/', selectedFile.name),
+        })
+        navigate(path)
+      },
+    })
+  }
+
+  const onCopy = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+    } catch (e) {
+      setError(formatAppError(e, t))
+    }
   }
 
   const onRemove = () => {
@@ -520,10 +556,25 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
             </tbody>
           </table>
         </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onClick={onMkdir} disabled={!!busy}>
-            <FolderPlus className="h-4 w-4" />
-            {t('newFolder')}
+        <ContextMenuContent className="min-w-52">
+          <ContextMenuItem onClick={onOpen} disabled={!selectedFile || selectedFile.type !== 'dir' || !!busy}>
+            <FolderClosed className="h-4 w-4" />
+            {t('open')}
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => void invalidateDirectory()} disabled={!!busy}>
+            <RefreshCw className="h-4 w-4" />
+            {t('refresh')}
+          </ContextMenuItem>
+          <ContextMenuItem onClick={onUpload} disabled={!!busy}>
+            <Upload className="h-4 w-4" />
+            {t('uploadHere')}
+            <ChevronRight className="ml-auto h-4 w-4" />
+          </ContextMenuItem>
+          <ContextMenuItem onClick={onDownload} disabled={!selectedFile || !!busy}>
+            <Download className="h-4 w-4" />
+            {t('download')}
+            <ChevronRight className="ml-auto h-4 w-4" />
           </ContextMenuItem>
           {selectedFile && (
             <>
@@ -531,20 +582,67 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
               <ContextMenuItem onClick={onRename} disabled={!!busy}>
                 <Pencil className="h-4 w-4" />
                 {t('rename')}
+                <span className="ml-auto">...</span>
               </ContextMenuItem>
-              <ContextMenuItem onClick={onDownload} disabled={!!busy}>
-                <Download className="h-4 w-4" />
-                {t('download')}
+              <ContextMenuItem onClick={onMoveTo} disabled={!!busy}>
+                <FolderInput className="h-4 w-4" />
+                {t('moveTo')}
+                <span className="ml-auto">...</span>
               </ContextMenuItem>
-              <ContextMenuSeparator />
               <ContextMenuItem variant="destructive" onClick={onRemove} disabled={!!busy}>
                 <Trash2 className="h-4 w-4" />
                 {t('remove')}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => void onCopy(selectedRemotePath)}>
+                <Copy className="h-4 w-4" />
+                {t('copyPath')}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => void onCopy(selectedFile.name)}>
+                <Clipboard className="h-4 w-4" />
+                {t('copyName')}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => void onCopy(path)}>
+                <FolderClosed className="h-4 w-4" />
+                {t('copyDirPath')}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => setPropertiesFile(selectedFile)}>
+                <Info className="h-4 w-4" />
+                {t('properties')}
+                <span className="ml-auto">...</span>
               </ContextMenuItem>
             </>
           )}
         </ContextMenuContent>
       </ContextMenu>
+
+      <Dialog open={!!propertiesFile} onOpenChange={(open) => !open && setPropertiesFile(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('properties')}</DialogTitle>
+          </DialogHeader>
+          {propertiesFile && (
+            <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <span className="text-muted-foreground">{t('name')}</span>
+              <span className="min-w-0 break-all font-medium">{propertiesFile.name}</span>
+              <span className="text-muted-foreground">{t('path')}</span>
+              <span className="min-w-0 break-all font-mono text-xs">{joinPath(path, propertiesFile.name)}</span>
+              <span className="text-muted-foreground">{t('type')}</span>
+              <span>{propertiesFile.type === 'dir' ? t('folder') : t('file')}</span>
+              <span className="text-muted-foreground">{t('size')}</span>
+              <span>{propertiesFile.type === 'dir' ? '-' : formatSize(propertiesFile.size)}</span>
+              <span className="text-muted-foreground">{t('modified')}</span>
+              <span>{propertiesFile.modified || '-'}</span>
+              <span className="text-muted-foreground">{t('permissions')}</span>
+              <span className="font-mono text-xs">{propertiesFile.permissions || '-'}</span>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPropertiesFile(null)}>{t('close')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Status bar */}
       <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
