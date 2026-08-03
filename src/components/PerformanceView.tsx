@@ -89,11 +89,26 @@ function ResourceItem({ name, icon, value, detail, active, onClick, data, colorC
 
 function MiniGraph({ label, data, colorClass }: { label: string; data: number[]; colorClass: string }) {
   return (
-    <div className="flex w-full flex-col gap-1 rounded border border-border bg-card/50 p-2 pb-0.5">
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      <div className="min-h-0 flex-1 w-full">
+    <div className="flex h-[88px] w-full flex-col gap-1 rounded border border-sky-400 bg-slate-100/70 p-1.5 pb-1 dark:bg-slate-900/40">
+      <span className="text-[10px] leading-none text-muted-foreground">{label}</span>
+      <div
+        className="min-h-0 flex-1 w-full rounded-sm"
+        style={{
+          backgroundImage: 'linear-gradient(to right, rgb(148 163 184 / 0.18) 1px, transparent 1px), linear-gradient(to bottom, rgb(148 163 184 / 0.18) 1px, transparent 1px)',
+          backgroundSize: '20% 25%',
+        }}
+      >
         <Sparkline data={data} max={100} className={colorClass} />
       </div>
+    </div>
+  )
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="truncate text-xs text-muted-foreground">{label}</div>
+      <div className="truncate font-semibold">{value}</div>
     </div>
   )
 }
@@ -208,44 +223,44 @@ export function PerformanceView({ sshConfig, active = true }: PerformanceViewPro
 
     if (selected === 'cpu') {
       return (
-        <>
-          <div className="mb-4 flex items-end justify-between">
-            <div>
-              <h3 className="text-3xl font-semibold">{t('cpu')}</h3>
+        <div className="space-y-4">
+          <div className="flex items-end justify-between gap-4">
+            <div className="min-w-0">
+              <h3 className="text-3xl font-normal tracking-tight">{t('cpu')}</h3>
               <p className="text-sm text-muted-foreground">{logical} {t('logicalProcessors')}</p>
             </div>
-            <div className="text-4xl font-semibold text-cyan-400">{cpuUtil.toFixed(1)}%</div>
+            <div className="shrink-0 text-3xl font-light text-cyan-400 sm:text-4xl">{cpuUtil.toFixed(1)}%</div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
             {cpuCores.map((data, i) => (
-              <MiniGraph key={i} label={`CPU ${i}`} data={data} colorClass="text-cyan-400" />
+              <MiniGraph key={i} label={`CPU ${i}`} data={data} colorClass="text-lime-500" />
             ))}
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 md:grid-cols-5">
-            <div>
-              <div className="text-xs text-muted-foreground">{t('utilization')}</div>
-              <div className="font-semibold">{cpuUtil.toFixed(1)}%</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">{t('processes')}</div>
-              <div className="font-semibold">{processes.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">{t('logicalProcessors')}</div>
-              <div className="font-semibold">{logical}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">{t('uptime')}</div>
-              <div className="font-semibold">{formatUptime(uptime)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">{t('duration')}</div>
-              <div className="font-semibold">{t('seconds60')}</div>
-            </div>
+          <p className="text-xs text-muted-foreground">{t('seconds60')}</p>
+
+          <div className="grid grid-cols-2 gap-x-5 gap-y-4 text-sm sm:grid-cols-3 lg:grid-cols-5">
+            <Metric label={t('utilization')} value={`${cpuUtil.toFixed(1)}%`} />
+            <Metric label={t('speed')} value={t('unavailable')} />
+            <Metric label={t('processes')} value={processes.toLocaleString()} />
+            <Metric label={t('threads')} value={t('unavailable')} />
+            <Metric label={t('handles')} value={t('unavailable')} />
           </div>
-        </>
+
+          <div className="grid gap-x-8 gap-y-2 border-t border-border pt-3 text-xs sm:grid-cols-2">
+            <Metric label={t('uptime')} value={formatUptime(uptime)} />
+            <Metric label={t('baseSpeed')} value={t('unavailable')} />
+            <Metric label={t('physicalCores')} value={logical.toString()} />
+            <Metric label={t('sockets')} value={t('unavailable')} />
+            <Metric label={t('virtualization')} value={t('unavailable')} />
+            <Metric label={t('logicalProcessors')} value={logical.toString()} />
+            <Metric label={t('l1Cache')} value={t('unavailable')} />
+            <Metric label={t('l2Cache')} value={t('unavailable')} />
+            <Metric label={t('l3Cache')} value={t('unavailable')} />
+            <Metric label={t('frequencyDriver')} value={t('unavailable')} />
+          </div>
+        </div>
       )
     }
 
