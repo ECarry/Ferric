@@ -105,6 +105,8 @@
   "remoteDocker": "Remote Docker information",
   "createContainer": "Create container",
   "image": "Image",
+  "command": "Command",
+  "createdAt": "Created",
   "status": "Status",
   "actions": "Actions",
   "stop": "Stop",

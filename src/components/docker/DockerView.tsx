@@ -4,6 +4,13 @@ import { AlertCircle, Loader2, Pencil, Play, Plus, RefreshCw, RotateCcw, Search,
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { ContainerFormModal } from '@/components/docker/ContainerFormModal'
 import { ContainerLogsDialog } from '@/components/docker/ContainerLogsDialog'
 import { cn } from '@/lib/utils'
@@ -160,20 +167,25 @@ export function DockerView({ sshConfig }: Props) {
 
       {/* Container table */}
       <div className="flex-1 overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-background text-xs text-muted-foreground">
+        <table className="min-w-[1080px] w-full table-fixed text-xs">
+          <colgroup>
+            <col className="w-[32%]" />
+            <col className="w-[23%]" />
+            <col className="w-[25%]" />
+            <col className="w-[20%]" />
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-muted/80 text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur">
             <tr className="border-b border-border">
-              <th className="px-4 py-2 text-left font-medium">ID</th>
-              <th className="px-4 py-2 text-left font-medium">{t('name')}</th>
+              <th className="px-4 py-2 text-left font-medium">Application</th>
               <th className="px-4 py-2 text-left font-medium">{t('image')}</th>
-              <th className="px-4 py-2 text-left font-medium">{t('status')}</th>
-              <th className="px-4 py-2 text-right font-medium">{t('actions')}</th>
+              <th className="px-4 py-2 text-left font-medium">{t('command')}</th>
+              <th className="px-4 py-2 text-left font-medium">{t('createdAt')}</th>
             </tr>
           </thead>
           <tbody>
             {containers.length === 0 && !loading && !error && (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center">
+                <td colSpan={4} className="px-4 py-12 text-center">
                   <p className="text-sm text-muted-foreground">{t('noContainers')}</p>
                   <Button variant="link" size="sm" onClick={() => setFormTarget(null)}>
                     {t('createContainer')}
@@ -185,100 +197,54 @@ export function DockerView({ sshConfig }: Props) {
               const running = c.status.toLowerCase().includes('up')
               const busy = actingId === c.id
               return (
-                <tr
-                  key={c.id}
-                  className="border-b border-border/50 transition-colors hover:bg-muted"
-                >
-                  <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                    {c.id.slice(0, 12)}
-                  </td>
-                  <td className="px-4 py-2">{c.names}</td>
-                  <td className="px-4 py-2 text-muted-foreground">{c.image}</td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={cn(
-                        'inline-flex items-center rounded-full px-2 py-0.5 text-xs',
-                        running
-                          ? 'bg-green-500/10 text-green-600'
-                          : 'bg-muted text-muted-foreground',
-                      )}
-                    >
-                      {c.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {running ? (
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          title={t('stop')}
-                          aria-label={`${t('stop')} ${c.names}`}
-                          disabled={busy}
-                          onClick={() => void onControl(c.id, 'stop')}
-                        >
-                          <Square className="h-3.5 w-3.5" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          title={t('start')}
-                          aria-label={`${t('start')} ${c.names}`}
-                          disabled={busy}
-                          onClick={() => void onControl(c.id, 'start')}
-                        >
-                          <Play className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        title={t('restart')}
-                        aria-label={`${t('restart')} ${c.names}`}
-                        disabled={busy}
-                        onClick={() => void onControl(c.id, 'restart')}
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        title={t('viewLogs')}
-                        aria-label={`${t('viewLogs')} ${c.names}`}
-                        disabled={busy}
-                        onClick={() => setLogsTarget(c)}
-                      >
-                        <ScrollText className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        title={t('editContainer')}
-                        aria-label={`${t('editContainer')} ${c.names}`}
-                        disabled={busy}
-                        onClick={() => setFormTarget(c)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        title={t('deleteContainer')}
-                        aria-label={`${t('deleteContainer')} ${c.names}`}
-                        disabled={busy}
-                        onClick={() => setDeleteTarget(c)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                <ContextMenu key={c.id}>
+                  <ContextMenuTrigger
+                    render={
+                      <tr className="border-b border-border/50 transition-colors even:bg-muted/20 hover:bg-muted" />
+                    }
+                  >
+                  <td className="min-w-0 px-4 py-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className={cn('h-2 w-2 shrink-0 rounded-full', running ? 'bg-green-500' : 'bg-muted-foreground/50')} />
+                      <div className="min-w-0">
+                        <div className="truncate font-medium" title={c.names}>{c.names}</div>
+                        <div className="truncate font-mono text-[10px] text-muted-foreground" title={c.id}>{c.id.slice(0, 12)}</div>
+                      </div>
                     </div>
                   </td>
-                </tr>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.image}>{c.image}</td>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.command}>{c.command || '—'}</td>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.createdAt}>{c.createdAt || '—'}</td>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="min-w-48">
+                  <ContextMenuItem disabled={busy} onClick={() => void onControl(c.id, running ? 'stop' : 'start')}>
+                    {running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    {running ? t('stop') : t('start')}
+                  </ContextMenuItem>
+                  <ContextMenuItem disabled={busy} onClick={() => void onControl(c.id, 'restart')}>
+                    <RotateCcw className="h-4 w-4" />
+                    {t('restart')}
+                  </ContextMenuItem>
+                  <ContextMenuItem disabled={busy} onClick={() => setLogsTarget(c)}>
+                    <ScrollText className="h-4 w-4" />
+                    {t('viewLogs')}
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem disabled={busy} onClick={() => setFormTarget(c)}>
+                    <Pencil className="h-4 w-4" />
+                    {t('editContainer')}
+                  </ContextMenuItem>
+                  <ContextMenuItem variant="destructive" disabled={busy} onClick={() => setDeleteTarget(c)}>
+                    <Trash2 className="h-4 w-4" />
+                    {t('deleteContainer')}
+                  </ContextMenuItem>
+                </ContextMenuContent>
+                </ContextMenu>
               )
             })}
             {loading && containers.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                   {t('loadingContainers')}
                 </td>
@@ -287,7 +253,7 @@ export function DockerView({ sshConfig }: Props) {
 
             {containers.length > 0 && filteredContainers.length === 0 && !loading && (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={4} className="px-4 py-12 text-center text-sm text-muted-foreground">
                   {t('noMatchingContainers')}
                 </td>
               </tr>

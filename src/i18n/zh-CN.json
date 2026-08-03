@@ -105,6 +105,8 @@
   "remoteDocker": "远程 Docker 信息",
   "createContainer": "创建容器",
   "image": "镜像",
+  "command": "命令",
+  "createdAt": "创建时间",
   "status": "状态",
   "actions": "操作",
   "stop": "停止",
