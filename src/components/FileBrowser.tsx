@@ -15,6 +15,7 @@ import {
   Info,
   Loader2,
   Pencil,
+  Play,
   RefreshCw,
   RotateCcw,
   Trash2,
@@ -90,6 +91,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   const transferManager = useSftpTransferManager(sessionId)
   const { tasks, history } = transferManager
   const retryTransfer = transferManager.retry
+  const { paused, pause, resume } = transferManager
   const files = directoryQuery.data ?? []
   const loading = directoryQuery.isLoading || directoryQuery.isFetching
   const [busy, setBusy] = useState<string | null>(null)
@@ -656,11 +658,17 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
 
       {tasks.length > 0 && (
         <div className="max-h-40 space-y-1 overflow-auto border-t border-border px-4 py-2 text-xs">
-          {history.length > 0 && (
-            <div className="pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-              History ({history.length})
-            </div>
-          )}
+          <div className="flex items-center justify-between pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span>{history.length > 0 ? `History (${history.length})` : 'Transfers'}</span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              title={paused ? 'Resume transfers' : 'Pause transfers'}
+              onClick={paused ? resume : pause}
+            >
+              {paused ? <Play className="h-3.5 w-3.5" /> : <span className="text-[10px]">II</span>}
+            </Button>
+          </div>
           {tasks.map((task) => {
             const running = task.status === 'running' || task.status === 'cancelling'
             const percent = task.total > 0 ? Math.min(100, Math.floor((task.transferred / task.total) * 100)) : 0

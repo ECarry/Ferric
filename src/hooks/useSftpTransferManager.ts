@@ -8,7 +8,7 @@ import {
 } from '@/lib/sftp'
 
 export type TransferKind = 'upload' | 'download'
-export type TransferStatus = 'running' | 'cancelling' | 'completed' | 'cancelled' | 'failed'
+export type TransferStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'cancelled' | 'failed'
 
 export interface TransferTask {
   id: string
@@ -31,6 +31,8 @@ export interface StartTransferOptions {
 
 export function useSftpTransferManager(sessionId: string) {
   const [tasks, setTasks] = useState<TransferTask[]>([])
+  const [paused, setPaused] = useState(false)
+  const resumeWaiters = useRef<Array<() => void>>([])
   const runners = useRef(new Map<string, StartTransferOptions>())
   const cancelledIds = useRef(new Set<string>())
 
@@ -45,11 +47,16 @@ export function useSftpTransferManager(sessionId: string) {
       id,
       kind,
       label,
-      status: 'running',
+      status: paused ? 'queued' : 'running',
       transferred: 0,
       total,
       startedAt: Date.now(),
     }])
+
+    if (paused) {
+      await new Promise<void>((resolve) => resumeWaiters.current.push(resolve))
+      updateTask(id, { status: 'running' })
+    }
 
     const onProgress = (progress: TransferProgress) => {
       if (progress.transferId === id && progress.sessionId === sessionId) {
@@ -84,7 +91,7 @@ export function useSftpTransferManager(sessionId: string) {
     }
 
     return id
-  }, [sessionId, updateTask])
+  }, [paused, sessionId, updateTask])
 
   const retry = useCallback(async (id: string) => {
     const runner = runners.current.get(id)
@@ -111,6 +118,12 @@ export function useSftpTransferManager(sessionId: string) {
   const history = tasks.filter((task) =>
     task.status === 'completed' || task.status === 'cancelled' || task.status === 'failed',
   )
+  const pause = useCallback(() => setPaused(true), [])
+  const resume = useCallback(() => {
+    setPaused(false)
+    const waiters = resumeWaiters.current.splice(0)
+    waiters.forEach((resolve) => resolve())
+  }, [])
 
-  return { tasks, history, start, cancel, retry }
+  return { tasks, history, paused, start, cancel, retry, pause, resume }
 }
