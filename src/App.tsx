@@ -203,7 +203,10 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <div
+      className="flex h-screen w-screen overflow-hidden"
+      onContextMenu={(event) => event.preventDefault()}
+    >
       <Sidebar
         mobileOpen={sidebarOpen}
         onCloseMobile={() => setSidebarOpen(false)}
