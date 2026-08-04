@@ -132,7 +132,6 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     const config = passwordOverride === undefined
       ? sshConfig
       : { ...sshConfig, password: passwordOverride }
-    if (passwordOverride !== undefined) setSessionPassword(passwordOverride)
     setStatus('connecting')
     setError(null)
     try {
@@ -140,6 +139,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       sessionRef.current = id
       setSessionId(id)
       setStatus('connected')
+      if (passwordOverride !== undefined) setSessionPassword(passwordOverride)
       setPasswordPrompt(false)
       // Open a separate SFTP session (best-effort; failure only disables SFTP).
       sftpConnect(config)
@@ -152,6 +152,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       setStatus('error')
       setError(formatAppError(e, t))
       if (isAppError(e) && e.code === 'errSshNoPassword') {
+        setPasswordPrompt(true)
+      } else if (passwordOverride !== undefined) {
         setPasswordPrompt(true)
       }
     }
