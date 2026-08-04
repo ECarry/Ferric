@@ -110,12 +110,9 @@ pub async fn list_remote_logs(config: ConnectConfig) -> Result<Vec<RemoteLog>, A
         })
         .collect::<Vec<_>>();
 
-    let journal_available = exec_remote(
-        &config,
-        "command -v journalctl >/dev/null 2>&1 && journalctl --no-pager -n 1 >/dev/null 2>&1",
-    )
-    .await
-    .is_ok();
+    let journal_available = exec_remote(&config, "command -v journalctl >/dev/null 2>&1")
+        .await
+        .is_ok();
     if journal_available {
         logs.push(RemoteLog {
             id: "journal".to_string(),
