@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertCircle, Loader2, Play, RefreshCw, RotateCcw, ServerCog, Square } from 'lucide-react'
+import { AlertCircle, Circle, Loader2, Play, RefreshCw, RotateCcw, ServerCog, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useI18n } from '@/i18n'
@@ -93,8 +93,13 @@ export function ServicesView({ sshConfig }: ServicesViewProps) {
                 <tr key={service.name} className="border-b border-border/50 transition-colors hover:bg-muted/60">
                   <td className="px-4 py-2.5 font-mono text-xs">{service.name}</td>
                   <td className="px-4 py-2.5">
-                    <span className={active ? 'rounded-full bg-green-500/10 px-2 py-0.5 text-xs text-green-600' : 'rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground'}>
-                      {service.active} · {service.sub}
+                    <span
+                      className={active ? 'inline-flex text-green-600' : 'inline-flex text-muted-foreground'}
+                      role="img"
+                      title={`${service.active} · ${service.sub}`}
+                      aria-label={`${service.active} · ${service.sub}`}
+                    >
+                      <Circle className={active ? 'h-3.5 w-3.5 fill-current' : 'h-3.5 w-3.5'} aria-hidden="true" />
                     </span>
                   </td>
                   <td className="max-w-md truncate px-4 py-2.5 text-muted-foreground" title={service.description}>{service.description || '-'}</td>
