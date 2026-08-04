@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatAppError } from '@/lib/error'
+import { getLogLevel, type LogLevel } from '@/lib/log-level'
 import { useI18n } from '@/i18n'
 import { useRemoteLog, useRemoteLogs } from '@/hooks/useLogs'
 import type { SshConnectConfig } from '@/lib/ssh'
@@ -24,22 +25,15 @@ const logLabelKeys: Record<string, string> = {
   journal: 'systemJournal',
 }
 
-function getLogLevel(line: string): Exclude<LevelFilter, 'all'> | 'other' {
-  const value = line.toLowerCase()
-  if (/\b(err|error|fatal|critical|crit|fail)\b/.test(value)) return 'error'
-  if (/\b(warn|warning)\b/.test(value)) return 'warning'
-  if (/\b(info|notice|started|accepted|success)\b/.test(value)) return 'info'
-  return 'other'
-}
-
 function matchesLevel(line: string, level: LevelFilter) {
-  return level === 'all' || getLogLevel(line) === level
+  return level === 'all' || getLogLevel(line) === (level === 'warning' ? 'warn' : level)
 }
 
-const levelColors: Record<Exclude<LevelFilter, 'all'> | 'other', string> = {
+const levelColors: Record<LogLevel, string> = {
   error: 'text-red-500',
-  warning: 'text-yellow-500',
+  warn: 'text-yellow-500',
   info: 'text-sky-500',
+  debug: 'text-muted-foreground',
   other: 'text-foreground',
 }
 
