@@ -140,10 +140,7 @@ async fn exec_on_session(
 }
 
 /// Run multiple commands on a single SSH session, returning each command's stdout.
-async fn exec_remote_batch(
-    config: &ConnectConfig,
-    cmds: &[&str],
-) -> Result<Vec<String>, AppError> {
+async fn exec_remote_batch(config: &ConnectConfig, cmds: &[&str]) -> Result<Vec<String>, AppError> {
     let session = connect_and_auth(config).await.map_err(AppError::from)?;
 
     let mut results = Vec::with_capacity(cmds.len());
@@ -175,23 +172,45 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
-/// 1. 获取远程 Docker 版本信息
-#[tauri::command]
-pub async fn get_remote_docker_version(config: ConnectConfig) -> Result<DockerInfo, AppError> {
-    let cmd = "docker version --format '{{json .Server}}'";
-
-    let raw_json = exec_remote_cmd(&config, cmd).await?;
-
-    let parsed: DockerVersionRow = serde_json::from_str(raw_json.trim()).map_err(|e| {
-        AppError::new("errDockerParse").detail(format!("{e} (raw: {raw_json})"))
-    })?;
-
+fn parse_docker_info(raw_json: &str) -> Result<DockerInfo, AppError> {
+    let parsed: DockerVersionRow = serde_json::from_str(raw_json.trim())
+        .map_err(|e| AppError::new("errDockerParse").detail(format!("{e} (raw: {raw_json})")))?;
     Ok(DockerInfo {
         version: parsed.version.unwrap_or_else(|| "Unknown".to_string()),
         api_version: parsed.api_version.unwrap_or_else(|| "Unknown".to_string()),
         os: parsed.os.unwrap_or_else(|| "Unknown".to_string()),
         arch: parsed.arch.unwrap_or_else(|| "Unknown".to_string()),
     })
+}
+
+fn parse_containers(raw_output: &str) -> Result<Vec<DockerContainer>, AppError> {
+    raw_output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let row: DockerPsRow = serde_json::from_str(line).map_err(|e| {
+                AppError::new("errDockerParse").detail(format!("{e} (raw: {line})"))
+            })?;
+            Ok(DockerContainer {
+                id: row.id,
+                image: row.image,
+                command: row.command,
+                created_at: row.created_at,
+                status: row.status,
+                names: row.names,
+            })
+        })
+        .collect()
+}
+
+/// 1. 获取远程 Docker 版本信息
+#[tauri::command]
+pub async fn get_remote_docker_version(config: ConnectConfig) -> Result<DockerInfo, AppError> {
+    let cmd = "docker version --format '{{json .Server}}'";
+
+    let raw_json = exec_remote_cmd(&config, cmd).await?;
+    parse_docker_info(&raw_json)
 }
 
 /// 1+2. Fetch Docker version and container list in a single SSH session.
@@ -208,36 +227,8 @@ pub async fn get_remote_docker_info(
     let raw_json = &results[0];
     let raw_output = &results[1];
 
-    let parsed: DockerVersionRow = serde_json::from_str(raw_json.trim()).map_err(|e| {
-        AppError::new("errDockerParse").detail(format!("{e} (raw: {raw_json})"))
-    })?;
-
-    let info = DockerInfo {
-        version: parsed.version.unwrap_or_else(|| "Unknown".to_string()),
-        api_version: parsed.api_version.unwrap_or_else(|| "Unknown".to_string()),
-        os: parsed.os.unwrap_or_else(|| "Unknown".to_string()),
-        arch: parsed.arch.unwrap_or_else(|| "Unknown".to_string()),
-    };
-
-    let mut containers = Vec::new();
-    for line in raw_output.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let row: DockerPsRow = serde_json::from_str(line).map_err(|e| {
-            AppError::new("errDockerParse").detail(format!("{e} (raw: {line})"))
-        })?;
-        containers.push(DockerContainer {
-            id: row.id,
-            image: row.image,
-            command: row.command,
-            created_at: row.created_at,
-            status: row.status,
-            names: row.names,
-        });
-    }
-
+    let info = parse_docker_info(raw_json)?;
+    let containers = parse_containers(raw_output)?;
     Ok((info, containers))
 }
 
@@ -252,29 +243,7 @@ pub async fn list_remote_containers(
     let cmd = format!("docker ps {} --format '{{{{json .}}}}'", all_flag);
 
     let raw_output = exec_remote_cmd(&config, &cmd).await?;
-
-    let mut containers = Vec::new();
-
-    // 按行解析多行 JSON 字符串
-    for line in raw_output.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let row: DockerPsRow = serde_json::from_str(line).map_err(|e| {
-            AppError::new("errDockerParse").detail(format!("{e} (raw: {line})"))
-        })?;
-        containers.push(DockerContainer {
-            id: row.id,
-            image: row.image,
-            command: row.command,
-            created_at: row.created_at,
-            status: row.status,
-            names: row.names,
-        });
-    }
-
-    Ok(containers)
+    parse_containers(&raw_output)
 }
 
 /// 3. 控制远程容器（启动 / 停止 / 重启）
