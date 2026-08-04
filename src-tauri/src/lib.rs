@@ -6,6 +6,7 @@ mod docker;
 mod forward;
 mod performance;
 mod services;
+mod logs;
 
 use tauri::Manager;
 use sftp::SftpManager;
@@ -74,6 +75,8 @@ pub fn run() {
       performance::get_performance_snapshot,
       services::list_remote_services,
       services::control_remote_service,
+      logs::list_remote_logs,
+      logs::read_remote_log,
       forward::ssh_forward_start,
       forward::ssh_forward_stop,
       forward::ssh_forward_stop_all,

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Activity, Container, FolderTree, Loader2, Pencil, Plug, Power, ServerCog, TerminalSquare, Zap } from 'lucide-react'
+import { Activity, Container, FileText, FolderTree, Loader2, Pencil, Plug, Power, ServerCog, TerminalSquare, Zap } from 'lucide-react'
 import type { ConnectionStatus, Server } from '@/types'
 import { cn } from '@/lib/utils'
 import { formatAppError, isAppError } from '@/lib/error'
@@ -21,6 +21,7 @@ const DockerView = lazy(() => import('./docker/DockerView').then((module) => ({ 
 const PortForwardView = lazy(() => import('./PortForwardView').then((module) => ({ default: module.PortForwardView })))
 const PerformanceView = lazy(() => import('./PerformanceView').then((module) => ({ default: module.PerformanceView })))
 const ServicesView = lazy(() => import('./ServicesView').then((module) => ({ default: module.ServicesView })))
+const LogsView = lazy(() => import('./LogsView').then((module) => ({ default: module.LogsView })))
 
 interface MainPanelProps {
   server?: Server
@@ -131,7 +132,6 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     const config = passwordOverride === undefined
       ? sshConfig
       : { ...sshConfig, password: passwordOverride }
-    if (passwordOverride !== undefined) setSessionPassword(passwordOverride)
     setStatus('connecting')
     setError(null)
     try {
@@ -139,6 +139,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       sessionRef.current = id
       setSessionId(id)
       setStatus('connected')
+      if (passwordOverride !== undefined) setSessionPassword(passwordOverride)
       setPasswordPrompt(false)
       // Open a separate SFTP session (best-effort; failure only disables SFTP).
       sftpConnect(config)
@@ -151,6 +152,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       setStatus('error')
       setError(formatAppError(e, t))
       if (isAppError(e) && e.code === 'errSshNoPassword') {
+        setPasswordPrompt(true)
+      } else if (passwordOverride !== undefined) {
         setPasswordPrompt(true)
       }
     }
@@ -246,6 +249,10 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
                 <ServerCog className="h-4 w-4" />
                 {t('services')}
               </TabsTrigger>
+              <TabsTrigger value="logs">
+                <FileText className="h-4 w-4" />
+                {t('logs')}
+              </TabsTrigger>
             </TabsList>
           </div>
           <Suspense
@@ -289,6 +296,11 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           {mountedTabs.has('services') && (
             <TabsContent value="services" className="min-h-0">
               {sshConfig && <ServicesView sshConfig={sshConfig} />}
+            </TabsContent>
+          )}
+          {mountedTabs.has('logs') && (
+            <TabsContent value="logs" className="min-h-0">
+              {sshConfig && <LogsView sshConfig={sshConfig} />}
             </TabsContent>
           )}
           </Suspense>

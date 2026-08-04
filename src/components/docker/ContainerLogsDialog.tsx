@@ -11,6 +11,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { formatAppError } from '@/lib/error'
+import { getLogLevel, type LogLevel } from '@/lib/log-level'
 import { useI18n } from '@/i18n'
 import { getRemoteContainerLogs, type DockerContainer } from '@/lib/docker'
 import type { SshConnectConfig } from '@/lib/ssh'
@@ -24,24 +25,15 @@ interface ContainerLogsDialogProps {
 const TAIL_PRESETS = [50, 200, 500, 1000]
 
 const LOG_LEVELS = ['all', 'info', 'warn', 'error', 'debug'] as const
-type LogLevel = (typeof LOG_LEVELS)[number]
+type FilterLevel = (typeof LOG_LEVELS)[number]
 
-const LEVEL_COLORS: Record<LogLevel | 'other', string> = {
+const LEVEL_COLORS: Record<LogLevel | 'all', string> = {
   all: 'text-[#e6e9f0]',
   info: 'text-gray-400',
   warn: 'text-yellow-400',
   error: 'text-red-400',
   debug: 'text-blue-400',
   other: 'text-[#e6e9f0]',
-}
-
-function getLogLevel(line: string): LogLevel | 'other' {
-  const lower = line.toLowerCase()
-  if (lower.includes('error') || lower.includes('fatal') || lower.includes('critical')) return 'error'
-  if (lower.includes('warn')) return 'warn'
-  if (lower.includes('info')) return 'info'
-  if (lower.includes('debug')) return 'debug'
-  return 'other'
 }
 
 export function ContainerLogsDialog({
@@ -57,7 +49,7 @@ export function ContainerLogsDialog({
   const [timestamps, setTimestamps] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [filter, setFilter] = useState('')
-  const [level, setLevel] = useState<LogLevel>('all')
+  const [level, setLevel] = useState<FilterLevel>('all')
   const logRef = useRef<HTMLPreElement>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
