@@ -6,7 +6,6 @@ import {
   Clipboard,
   Copy,
   Download,
-  File as FileIcon,
   FolderClosed,
   FolderInput,
   FolderPlus,
@@ -25,6 +24,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { cn } from '@/lib/utils'
 import { formatAppError } from '@/lib/error'
+import { baseName, formatSize, joinPath, parentPath } from '@/lib/file-utils'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { FileBrowserTable } from './FileBrowserTable'
 import {
   createTransferId,
   onDownloadProgress,
@@ -55,26 +56,6 @@ import {
 
 interface FileBrowserProps {
   sessionId: string
-}
-
-function joinPath(base: string, name: string) {
-  return base === '/' ? `/${name}` : `${base}/${name}`
-}
-
-function parentPath(path: string) {
-  const parent = path.replace(/\/[^/]+\/?$/, '')
-  return parent === '' ? '/' : parent
-}
-
-function baseName(path: string) {
-  return path.split('/').filter(Boolean).pop() ?? path
-}
-
-function formatSize(bytes: number) {
-  if (bytes === 0) return '-'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
 export function FileBrowser({ sessionId }: FileBrowserProps) {
@@ -488,73 +469,17 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
       {/* File table */}
       <ContextMenu>
         <ContextMenuTrigger render={<div ref={tableAreaRef} className="relative flex-1 overflow-auto" />}>
-          {dragActive && (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-primary/10 backdrop-blur-sm">
-              <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-primary/50 bg-background/80 px-8 py-6">
-                <Upload className="h-8 w-8 text-primary" />
-                <p className="text-sm font-medium text-primary">{t('dragDropHint')}</p>
-              </div>
-            </div>
-          )}
-          {visibleError ? (
-            <div className="px-4 py-3 font-mono text-xs text-destructive">{visibleError}</div>
-          ) : null}
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-background text-xs text-muted-foreground">
-              <tr className="border-b border-border">
-                <th className="px-4 py-2 text-left font-medium">{t('fileName')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('size')}</th>
-                <th className="px-4 py-2 text-left font-medium">{t('modified')}</th>
-                <th className="px-4 py-2 text-left font-medium">{t('permissions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {files.map((file) => (
-                <tr
-                  key={file.name}
-                  onClick={() => setSelected(file.name)}
-                  onDoubleClick={() => {
-                    if (file.type === 'dir') {
-                      void navigate(joinPath(path, file.name))
-                    }
-                  }}
-                  onContextMenu={() => setSelected(file.name)}
-                  className={cn(
-                    'cursor-default border-b border-border/50 transition-colors',
-                    selected === file.name ? 'bg-accent' : 'hover:bg-muted',
-                  )}
-                >
-                  <td className="flex items-center gap-2 px-4 py-2">
-                    {file.type === 'dir' ? (
-                      <FolderClosed className="h-4 w-4 text-primary" />
-                    ) : (
-                      <FileIcon className="h-4 w-4 text-muted-foreground" />
-                    )}
-                    <span>{file.name}</span>
-                  </td>
-                  <td className="px-4 py-2 text-right text-muted-foreground">
-                    {file.type === 'dir' ? '-' : formatSize(file.size)}
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">
-                    {file.modified || '-'}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                    {file.permissions}
-                  </td>
-                </tr>
-              ))}
-              {!loading && files.length === 0 && !error ? (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="px-4 py-8 text-center text-sm text-muted-foreground"
-                  >
-                    {t('emptyDirectory')}
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+          <FileBrowserTable
+            files={files}
+            selected={selected}
+            loading={loading}
+            dragActive={dragActive}
+            visibleError={visibleError}
+            onSelect={setSelected}
+            onOpenFile={(file) => {
+              if (file.type === 'dir') void navigate(joinPath(path, file.name))
+            }}
+          />
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-52">
           <ContextMenuItem onClick={onOpen} disabled={!selectedFile || selectedFile.type !== 'dir' || !!busy}>
