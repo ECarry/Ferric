@@ -8,13 +8,11 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Circle,
   Folder,
   FolderPlus,
   Pencil,
   Plus,
   Search,
-  Server as ServerIcon,
   Terminal,
   Trash2,
   X,
@@ -28,16 +26,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { HelpDialog } from '@/components/HelpDialog'
 import { SettingsDialog } from '@/components/SettingsDialog'
+import { SidebarServerRow } from '@/components/SidebarServerRow'
 
 interface SidebarProps {
   mobileOpen?: boolean
@@ -434,7 +426,7 @@ export function Sidebar({
                         {showBefore && (
                           <div className="pointer-events-none absolute inset-x-2 -top-px z-10 h-0.5 rounded bg-primary" />
                         )}
-                        <ServerRow
+                        <SidebarServerRow
                           server={server}
                           active={server.id === activeServerId}
                           connected={connectedIds.has(server.id)}
@@ -532,84 +524,5 @@ export function Sidebar({
         onCancel={() => setConfirm(null)}
       />
     </aside>
-  )
-}
-
-function ServerRow({
-  server,
-  active,
-  connected,
-  dragging,
-  onClick,
-  onDoubleClick,
-  onEdit,
-  onDelete,
-  onDragStart,
-  onDragEnd,
-}: {
-  server: Server
-  active: boolean
-  connected: boolean
-  dragging: boolean
-  onClick: () => void
-  onDoubleClick: () => void
-  onEdit: () => void
-  onDelete: () => void
-  onDragStart: () => void
-  onDragEnd: () => void
-}) {
-  const { t } = useI18n()
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger
-        render={
-          <button
-            draggable
-            onDragStart={(e: DragEvent) => {
-              e.dataTransfer.effectAllowed = 'move'
-              e.dataTransfer.setData('text/plain', server.id)
-              onDragStart()
-            }}
-            onDragEnd={onDragEnd}
-            onClick={onClick}
-            onDoubleClick={onDoubleClick}
-            title={t('serverHint')}
-            aria-current={active ? 'page' : undefined}
-            className={cn(
-              'group flex w-full items-center gap-3 rounded-lg px-2 py-2.5 pl-7 text-left transition-all',
-              dragging && 'opacity-50',
-              active
-                ? 'bg-primary/10 text-foreground shadow-sm'
-                : 'hover:bg-muted/60 text-sidebar-foreground/80',
-            )}
-          />
-        }
-      >
-        <ServerIcon
-          className="h-4 w-4 shrink-0"
-          style={{ color: server.color }}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{server.name}</div>
-          <div className="truncate text-xs text-muted-foreground">
-            {server.username}@{server.host}
-          </div>
-        </div>
-        {connected && (
-          <Circle className="h-2 w-2 shrink-0 fill-green-500 text-green-500" />
-        )}
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={onEdit}>
-          <Pencil className="h-4 w-4" />
-          {t('edit')}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem variant="destructive" onClick={onDelete}>
-          <Trash2 className="h-4 w-4" />
-          {t('delete')}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
   )
 }
