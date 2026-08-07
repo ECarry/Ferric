@@ -38,6 +38,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 1. 配置 Node.js 环境及 npm 缓存
       - name: Setup Node.js
@@ -69,20 +71,25 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # 6. 使用 tag annotation 作为 release 说明，并解析出 tag 指向的 commit
+      # 6. Use the annotated tag message as the release notes.
       - name: Extract release notes and commit from tag
         id: tag-meta
         shell: bash
         run: |
-          body=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
-          echo "commit=$(git rev-parse --verify HEAD)" >> "$GITHUB_OUTPUT"
+          body=$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}")
+          if [ -z "$body" ]; then
+            echo "The tag does not contain release notes." >&2
+            exit 1
+          fi
+          echo "commit=$(git rev-list -n 1 "${GITHUB_REF_NAME}")" >> "$GITHUB_OUTPUT"
           {
             echo "body<<EOF"
             echo "$body"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # 7. 使用适配 Tauri v2 的 tauri-action
+      # 7. Use the Tauri v2-compatible tauri-action.
+
       - name: Build and Publish Tauri App
         uses: tauri-apps/tauri-action@v0.5
         env:
@@ -96,3 +103,23 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      # Ensure the existing release body is also corrected on reruns.
+      - name: Update GitHub release notes
+        uses: actions/github-script@v7
+        env:
+          RELEASE_BODY: ${{ steps.tag-meta.outputs.body }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const release = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: context.ref.replace('refs/tags/', ''),
+            });
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.data.id,
+              body: process.env.RELEASE_BODY,
+            });
