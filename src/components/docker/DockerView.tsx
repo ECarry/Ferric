@@ -32,6 +32,18 @@ interface Props {
   sshConfig: SshConnectConfig
 }
 
+function formatMappedPorts(ports: string, side: 'host' | 'container') {
+  return ports
+    .split(',')
+    .map((port) => port.trim())
+    .filter(Boolean)
+    .map((port) => {
+      const [host, container] = port.split('->')
+      return side === 'host' ? host : container ?? host
+    })
+    .join(', ')
+}
+
 export function DockerView({ sshConfig }: Props) {
   const { t } = useI18n()
   const [formTarget, setFormTarget] = useState<DockerContainer | null | undefined>(undefined)
@@ -169,23 +181,31 @@ export function DockerView({ sshConfig }: Props) {
       <div className="flex-1 overflow-auto">
         <table className="min-w-[1080px] w-full table-fixed text-xs">
           <colgroup>
-            <col className="w-[32%]" />
-            <col className="w-[23%]" />
-            <col className="w-[25%]" />
-            <col className="w-[20%]" />
+            <col className="w-[18%]" />
+            <col className="w-[12%]" />
+            <col className="w-[10%]" />
+            <col className="w-[11%]" />
+            <col className="w-[12%]" />
+            <col className="w-[12%]" />
+            <col className="w-[14%]" />
+            <col className="w-[13%]" />
           </colgroup>
           <thead className="sticky top-0 z-10 bg-muted/80 text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur">
             <tr className="border-b border-border">
               <th className="px-4 py-2 text-left font-medium">Application</th>
-              <th className="px-4 py-2 text-left font-medium">{t('image')}</th>
-              <th className="px-4 py-2 text-left font-medium">{t('command')}</th>
-              <th className="px-4 py-2 text-left font-medium">{t('createdAt')}</th>
+              <th className="px-4 py-2 text-left font-medium">Version</th>
+              <th className="px-4 py-2 text-left font-medium">Network</th>
+              <th className="px-4 py-2 text-left font-medium">Container IP</th>
+              <th className="px-4 py-2 text-left font-medium">Container Port</th>
+              <th className="px-4 py-2 text-left font-medium">LAN IP:Port</th>
+              <th className="px-4 py-2 text-left font-medium">Volume Mappings</th>
+              <th className="px-4 py-2 text-left font-medium">Uptime</th>
             </tr>
           </thead>
           <tbody>
             {containers.length === 0 && !loading && !error && (
               <tr>
-                <td colSpan={4} className="px-4 py-12 text-center">
+                <td colSpan={8} className="px-4 py-12 text-center">
                   <p className="text-sm text-muted-foreground">{t('noContainers')}</p>
                   <Button variant="link" size="sm" onClick={() => setFormTarget(null)}>
                     {t('createContainer')}
@@ -212,9 +232,13 @@ export function DockerView({ sshConfig }: Props) {
                       </div>
                     </div>
                   </td>
-                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.image}>{c.image}</td>
-                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.command}>{c.command || '—'}</td>
-                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.createdAt}>{c.createdAt || '—'}</td>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.image}>{c.image || '—'}</td>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.networks}>{c.networks || '—'}</td>
+                  <td className="truncate px-4 py-2 font-mono text-muted-foreground" title={c.containerIp}>{c.containerIp || '—'}</td>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.ports}>{formatMappedPorts(c.ports, 'container') || '—'}</td>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.ports}>{c.ports ? `${sshConfig.host}:${formatMappedPorts(c.ports, 'host')}` : '—'}</td>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.mounts}>{c.mounts || '—'}</td>
+                  <td className="truncate px-4 py-2 text-muted-foreground" title={c.runningFor}>{c.runningFor || c.createdAt || '—'}</td>
                 </ContextMenuTrigger>
                 <ContextMenuContent className="min-w-48">
                   <ContextMenuItem disabled={busy} onClick={() => void onControl(c.id, running ? 'stop' : 'start')}>
@@ -244,7 +268,7 @@ export function DockerView({ sshConfig }: Props) {
             })}
             {loading && containers.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                   {t('loadingContainers')}
                 </td>
@@ -253,7 +277,7 @@ export function DockerView({ sshConfig }: Props) {
 
             {containers.length > 0 && filteredContainers.length === 0 && !loading && (
               <tr>
-                <td colSpan={4} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
                   {t('noMatchingContainers')}
                 </td>
               </tr>

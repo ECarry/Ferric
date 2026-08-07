@@ -15,6 +15,11 @@ export interface DockerContainer {
   createdAt: string
   status: string
   names: string
+  networks: string
+  containerIp: string
+  ports: string
+  mounts: string
+  runningFor: string
 }
 
 export interface CreateDockerContainerInput {

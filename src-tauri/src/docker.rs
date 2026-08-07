@@ -18,6 +18,11 @@ pub struct DockerContainer {
     pub created_at: String,
     pub status: String,
     pub names: String,
+    pub networks: String,
+    pub container_ip: String,
+    pub ports: String,
+    pub mounts: String,
+    pub running_for: String,
 }
 
 /// Values accepted when creating a detached container.
@@ -63,6 +68,45 @@ struct DockerPsRow {
     status: String,
     #[serde(rename = "Names")]
     names: String,
+    #[serde(rename = "Networks", default)]
+    networks: String,
+    #[serde(rename = "Ports", default)]
+    ports: String,
+    #[serde(rename = "Mounts", default)]
+    mounts: String,
+    #[serde(rename = "RunningFor", default)]
+    running_for: String,
+}
+
+struct DockerInspectRow {
+    networks: String,
+}
+
+fn inspect_ips(networks: &str) -> String {
+    networks
+        .split_whitespace()
+        .filter_map(|entry| entry.split_once('=').map(|(_, ip)| ip))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn parse_inspect_rows(raw: &str) -> std::collections::HashMap<String, DockerInspectRow> {
+    raw.lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, '|');
+            let id = parts.next()?.trim();
+            if id.is_empty() {
+                return None;
+            }
+            let lookup_id = id.chars().take(12).collect::<String>();
+            Some((
+                lookup_id,
+                DockerInspectRow {
+                    networks: parts.next().unwrap_or_default().trim().to_string(),
+                },
+            ))
+        })
+        .collect()
 }
 
 /// 在远程 SSH 通道中执行单个命令并获取 stdout。
@@ -183,7 +227,10 @@ fn parse_docker_info(raw_json: &str) -> Result<DockerInfo, AppError> {
     })
 }
 
-fn parse_containers(raw_output: &str) -> Result<Vec<DockerContainer>, AppError> {
+fn parse_containers(
+    raw_output: &str,
+    inspected: Option<&std::collections::HashMap<String, DockerInspectRow>>,
+) -> Result<Vec<DockerContainer>, AppError> {
     raw_output
         .lines()
         .map(str::trim)
@@ -192,6 +239,7 @@ fn parse_containers(raw_output: &str) -> Result<Vec<DockerContainer>, AppError> 
             let row: DockerPsRow = serde_json::from_str(line).map_err(|e| {
                 AppError::new("errDockerParse").detail(format!("{e} (raw: {line})"))
             })?;
+            let inspected_row = inspected.and_then(|rows| rows.get(&row.id));
             Ok(DockerContainer {
                 id: row.id,
                 image: row.image,
@@ -199,6 +247,11 @@ fn parse_containers(raw_output: &str) -> Result<Vec<DockerContainer>, AppError> 
                 created_at: row.created_at,
                 status: row.status,
                 names: row.names,
+                networks: row.networks,
+                container_ip: inspected_row.map(|item| inspect_ips(&item.networks)).unwrap_or_default(),
+                ports: row.ports,
+                mounts: row.mounts,
+                running_for: row.running_for,
             })
         })
         .collect()
@@ -222,13 +275,16 @@ pub async fn get_remote_docker_info(
     let version_cmd = "docker version --format '{{json .Server}}'";
     let all_flag = if all { "-a" } else { "" };
     let ps_cmd = format!("docker ps {} --format '{{{{json .}}}}'", all_flag);
+    // Use a delimiter rather than relying on escaped tabs in a Go template.
+    let inspect_cmd = "ids=$(docker ps -aq); if [ -n \"$ids\" ]; then docker inspect --format '{{.Id}}|{{range $name, $network := .NetworkSettings.Networks}}{{$name}}={{$network.IPAddress}} {{end}}' $ids; fi";
 
-    let results = exec_remote_batch(&config, &[version_cmd, &ps_cmd]).await?;
+    let results = exec_remote_batch(&config, &[version_cmd, &ps_cmd, inspect_cmd]).await?;
     let raw_json = &results[0];
     let raw_output = &results[1];
+    let inspected = parse_inspect_rows(&results[2]);
 
     let info = parse_docker_info(raw_json)?;
-    let containers = parse_containers(raw_output)?;
+    let containers = parse_containers(raw_output, Some(&inspected))?;
     Ok((info, containers))
 }
 
@@ -243,7 +299,7 @@ pub async fn list_remote_containers(
     let cmd = format!("docker ps {} --format '{{{{json .}}}}'", all_flag);
 
     let raw_output = exec_remote_cmd(&config, &cmd).await?;
-    parse_containers(&raw_output)
+    parse_containers(&raw_output, None)
 }
 
 /// 3. 控制远程容器（启动 / 停止 / 重启）
