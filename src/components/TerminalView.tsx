@@ -15,16 +15,25 @@ import {
 interface TerminalViewProps {
   sessionId: string
   active?: boolean
+  history?: Uint8Array[]
+  onOutput?: (bytes: Uint8Array) => void
 }
 
 const decoder = new TextDecoder()
 
-export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
+export function TerminalView({ sessionId, active = true, history = [], onOutput }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const activeRef = useRef(active)
+  const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null)
+  const historyRef = useRef(history)
+  const onOutputRef = useRef(onOutput)
 
+  useEffect(() => {
+    historyRef.current = history
+    onOutputRef.current = onOutput
+  }, [history, onOutput])
   // Create the terminal once per session.
   useEffect(() => {
     const container = containerRef.current
@@ -34,6 +43,7 @@ export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
     const theme = getTerminalTheme(settings.themeId)
 
     const term = new Terminal({
+      scrollback: 10_000,
       fontFamily: settings.fontFamily,
       fontSize: settings.fontSize,
       cursorBlink: settings.cursorBlink,
@@ -68,11 +78,17 @@ export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
     term.loadAddon(new WebLinksAddon())
     term.open(container)
     fit.fit()
+    for (const bytes of historyRef.current) term.write(decoder.decode(bytes))
 
     // Remote shell output -> terminal. Keep receiving output while hidden so no terminal history is lost.
+    let disposed = false
     let unlisten: UnlistenFn | undefined
-    void onSshData(sessionId, (bytes) => term.write(decoder.decode(bytes))).then((fn) => {
-      unlisten = fn
+    void onSshData(sessionId, (bytes) => {
+      onOutputRef.current?.(bytes)
+      term.write(decoder.decode(bytes))
+    }).then((fn) => {
+      if (disposed) fn()
+      else unlisten = fn
     })
 
     // Terminal input -> remote shell. Hidden terminals do not send input.
@@ -84,7 +100,11 @@ export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
     const syncSize = () => {
       if (!activeRef.current || !container.clientWidth || !container.clientHeight) return
       fit.fit()
-      void sshResize(sessionId, term.cols, term.rows)
+      const lastSize = lastSizeRef.current
+      if (!lastSize || lastSize.cols !== term.cols || lastSize.rows !== term.rows) {
+        lastSizeRef.current = { cols: term.cols, rows: term.rows }
+        void sshResize(sessionId, term.cols, term.rows)
+      }
     }
     const resizeObserver = new ResizeObserver(syncSize)
     resizeObserver.observe(container)
@@ -93,6 +113,7 @@ export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
     if (activeRef.current) term.focus()
 
     return () => {
+      disposed = true
       resizeObserver.disconnect()
       dataSub.dispose()
       unlisten?.()
@@ -107,15 +128,7 @@ export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
     if (!active) return
 
     requestAnimationFrame(() => {
-      const term = termRef.current
-      const container = containerRef.current
-      const fit = fitRef.current
-      if (!term || !container) return
-      term.focus()
-      if (container.clientWidth && container.clientHeight) {
-        fit?.fit()
-        void sshResize(sessionId, term.cols, term.rows)
-      }
+      termRef.current?.focus()
     })
   }, [active, sessionId])
 
