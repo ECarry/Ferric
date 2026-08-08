@@ -19,6 +19,7 @@ import {
   Trash2,
   Upload,
   FolderUp,
+  Send,
   X,
 } from 'lucide-react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
@@ -56,9 +57,10 @@ import {
 
 interface FileBrowserProps {
   sessionId: string
+  onSendToTerminal?: (path: string) => void
 }
 
-export function FileBrowser({ sessionId }: FileBrowserProps) {
+export function FileBrowser({ sessionId, onSendToTerminal }: FileBrowserProps) {
   const { t } = useI18n()
   const homeQuery = useSftpHome(sessionId)
   const [requestedPath, setRequestedPath] = useState<string | null>(null)
@@ -232,6 +234,10 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
     }
   }
 
+  const sendSelectedPath = () => {
+    onSendToTerminal?.(selectedRemotePath)
+  }
+
   const onRemove = () => {
     if (selectedFile) setDeleteTarget(selectedFile)
   }
@@ -340,7 +346,7 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -390,6 +396,17 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
         >
           <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
         </Button>
+        {onSendToTerminal && (
+          <Button
+            variant="outline"
+            size="sm"
+            title={t('sendPathToTerminal')}
+            onClick={sendSelectedPath}
+          >
+            <Send className="h-4 w-4" />
+            {t('sendToTerminal')}
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={onUpload}>
           <Upload className="h-4 w-4" />
           {t('upload')}
@@ -488,6 +505,12 @@ export function FileBrowser({ sessionId }: FileBrowserProps) {
                 <FolderClosed className="h-4 w-4" />
                 {t('copyDirPath')}
               </ContextMenuItem>
+              {onSendToTerminal && (
+                <ContextMenuItem onClick={sendSelectedPath}>
+                  <Send className="h-4 w-4" />
+                  {t('sendPathToTerminal')}
+                </ContextMenuItem>
+              )}
               <ContextMenuSeparator />
               <ContextMenuItem onClick={() => setPropertiesFile(selectedFile)}>
                 <Info className="h-4 w-4" />

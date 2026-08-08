@@ -11,10 +11,11 @@ import {
   onSshClosed,
   sshConnect,
   sshDisconnect,
+  sshSendInput,
   type SshConnectConfig,
 } from '@/lib/ssh'
 import { sftpConnect, sftpDisconnect } from '@/lib/sftp'
-import { TerminalView } from './TerminalView'
+import { TerminalWorkspace } from './TerminalWorkspace'
 
 const FileBrowser = lazy(() => import('./FileBrowser').then((module) => ({ default: module.FileBrowser })))
 const DockerView = lazy(() => import('./docker/DockerView').then((module) => ({ default: module.DockerView })))
@@ -264,7 +265,18 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
             }
           >
           <TabsContent value="terminal" keepMounted className="min-h-0 data-[hidden]:hidden">
-            <TerminalView sessionId={sessionId} active={active} />
+            <TerminalWorkspace
+              sessionId={sessionId}
+              sftpReady={Boolean(sftpId)}
+              active={active && tab === 'terminal'}
+              fileBrowser={sftpId ? (
+                <FileBrowser
+                  key={sftpId}
+                  sessionId={sftpId}
+                  onSendToTerminal={(path) => void sshSendInput(sessionId, path)}
+                />
+              ) : null}
+            />
           </TabsContent>
           {mountedTabs.has('sftp') && (
             <TabsContent value="sftp" keepMounted className="min-h-0">
