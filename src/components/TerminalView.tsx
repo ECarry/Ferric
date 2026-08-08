@@ -90,7 +90,7 @@ export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
     resizeObserver.observe(container)
     syncSize()
 
-    term.focus()
+    if (activeRef.current) term.focus()
 
     return () => {
       resizeObserver.disconnect()
@@ -104,7 +104,20 @@ export function TerminalView({ sessionId, active = true }: TerminalViewProps) {
 
   useEffect(() => {
     activeRef.current = active
-  }, [active])
+    if (!active) return
+
+    requestAnimationFrame(() => {
+      const term = termRef.current
+      const container = containerRef.current
+      const fit = fitRef.current
+      if (!term || !container) return
+      term.focus()
+      if (container.clientWidth && container.clientHeight) {
+        fit?.fit()
+        void sshResize(sessionId, term.cols, term.rows)
+      }
+    })
+  }, [active, sessionId])
 
   // Live-apply settings changes without recreating the terminal.
   useEffect(() => {

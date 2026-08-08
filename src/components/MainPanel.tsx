@@ -266,14 +266,16 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           >
           <TabsContent value="terminal" keepMounted className="min-h-0 data-[hidden]:hidden">
             <TerminalWorkspace
-              sessionId={sessionId}
+              key={sessionId}
+              initialSessionId={sessionId}
+              sshConfig={sshConfig!}
               sftpReady={Boolean(sftpId)}
               active={active && tab === 'terminal'}
-              fileBrowser={sftpId ? (
+              fileBrowser={(terminalSessionId) => sftpId ? (
                 <FileBrowser
-                  key={sftpId}
+                  key={`${sftpId}-${terminalSessionId}`}
                   sessionId={sftpId}
-                  onSendToTerminal={(path) => void sshSendInput(sessionId, path)}
+                  onSendToTerminal={(path) => void sshSendInput(terminalSessionId, path)}
                 />
               ) : null}
             />
