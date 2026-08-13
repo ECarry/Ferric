@@ -1,7 +1,9 @@
 import type { DragEvent } from 'react'
 import {
+  Cable,
   Circle,
   Pencil,
+  Plug,
   Server as ServerIcon,
   Trash2,
 } from 'lucide-react'
@@ -42,6 +44,12 @@ export function SidebarServerRow({
   onDragEnd,
 }: SidebarServerRowProps) {
   const { t } = useI18n()
+  const ProtocolIcon = server.protocol === 'serial'
+    ? Cable
+    : server.protocol === 'telnet'
+      ? Plug
+      : ServerIcon
+
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -68,9 +76,10 @@ export function SidebarServerRow({
           />
         }
       >
-        <ServerIcon
+        <ProtocolIcon
           className="h-4 w-4 shrink-0"
           style={{ color: server.color }}
+          aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{server.name}</div>
