@@ -257,32 +257,32 @@ export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, file
       >
         {windows.map((item) => {
           const paneIndex = paneIds.indexOf(item.id)
-          if (paneIndex === -1) {
-            return (
-              <div key={item.id} className="absolute inset-0 invisible pointer-events-none">
-                <TerminalView
-                  sessionId={item.sessionId}
-                  active={false}
-                  history={historyFor(item.sessionId)}
-                  onOutput={(bytes) => {
-                    const history = historyFor(item.sessionId)
-                    history.push(bytes.slice())
-                    if (history.length > 10_000) history.splice(0, history.length - 10_000)
-                  }}
-                />
-              </div>
-            )
-          }
+          const visible = paneIndex !== -1
           return (
-            <div key={item.id} className={`relative min-w-0 flex-1 ${paneIndex > 0 ? 'border-l border-border' : ''}`} onClick={() => setActiveWindowId(item.id)}>
-              {paneIds.length === 2 && (
+            <div
+              key={item.id}
+              className={visible
+                ? `relative min-w-0 flex-1 ${paneIndex > 0 ? 'border-l border-border' : ''}`
+                : 'absolute inset-0 invisible pointer-events-none'}
+              onClick={() => visible && setActiveWindowId(item.id)}
+            >
+              {visible && paneIds.length === 2 && (
                 <div className="flex h-7 items-center gap-2 border-b border-border/60 bg-muted/20 px-3 text-[11px] text-muted-foreground">
                   <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                   <span className="truncate">{item.title}</span>
                   <button type="button" className="ml-auto rounded p-0.5 hover:bg-muted hover:text-foreground" onClick={(event) => { event.stopPropagation(); closeSplit() }} aria-label={t('closeTerminalSplit')}><X className="h-3 w-3" /></button>
                 </div>
               )}
-              <TerminalView sessionId={item.sessionId} active={active && item.id === activeWindow?.id} />
+              <TerminalView
+                sessionId={item.sessionId}
+                active={active && item.id === activeWindow?.id}
+                history={historyFor(item.sessionId)}
+                onOutput={(bytes) => {
+                  const history = historyFor(item.sessionId)
+                  history.push(bytes.slice())
+                  if (history.length > 10_000) history.splice(0, history.length - 10_000)
+                }}
+              />
             </div>
           )
         })}
