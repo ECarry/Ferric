@@ -13,7 +13,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Terminal,
   Trash2,
   X,
   Settings,
@@ -197,30 +196,23 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-0 z-40 flex h-full w-72 shrink-0 -translate-x-full flex-col border-r border-sidebar-border/60 bg-gradient-to-b from-sidebar to-background text-sidebar-foreground shadow-xl transition-transform duration-200 md:static md:z-auto md:w-64 md:translate-x-0 md:shadow-none lg:w-72',
+        'relative fixed inset-y-0 left-0 z-40 flex h-full w-72 shrink-0 -translate-x-full flex-col border-r border-sidebar-border/60 bg-gradient-to-b from-sidebar to-background text-sidebar-foreground shadow-xl transition-transform duration-200 md:static md:z-auto md:w-64 md:translate-x-0 md:shadow-none lg:w-72',
         mobileOpen && 'translate-x-0',
       )}
     >
-      {/* Brand */}
-      <div className="flex items-center gap-3 border-b border-sidebar-border/60 px-4 py-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <Terminal className="h-5 w-5" />
-        </div>
-        <div className="text-base font-semibold tracking-tight">Ferric</div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t('closeSidebar')}
-          onClick={onCloseMobile}
-          className="ml-auto md:hidden"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={t('closeSidebar')}
+        onClick={onCloseMobile}
+        className="absolute top-2 right-2 md:hidden"
+      >
+        <X className="h-4 w-4" />
+      </Button>
 
       {/* Search */}
-      <div className="px-3 pb-3 pt-3">
+      <div className="px-3 pb-3 pt-12 md:pt-3">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
