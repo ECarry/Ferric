@@ -123,3 +123,33 @@ jobs:
               release_id: release.data.id,
               body: process.env.RELEASE_BODY,
             });
+
+  # tauri-action defaults the updater manifest "notes" to the latest commit
+  # subject, so the in-app updater only shows a single line. Overwrite the
+  # published latest.json "notes" with the full annotated tag message.
+  update-updater-notes:
+    needs: publish-tauri
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch latest.json notes with the tag message
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          body=$(git tag -l --format='%(contents)' "$TAG")
+          if [ -z "$body" ]; then
+            echo "The tag does not contain release notes." >&2
+            exit 1
+          fi
+          gh release download "$TAG" --pattern latest.json --output latest.json --clobber
+          jq --arg notes "$body" '.notes = $notes' latest.json > latest.patched.json
+          mv latest.patched.json latest.json
+          gh release upload "$TAG" latest.json --clobber
