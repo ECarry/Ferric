@@ -189,7 +189,21 @@ function ServerFormInner({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Tabs
               value={form.protocol}
-              onValueChange={(value) => set('protocol', value as Server['protocol'])}
+              onValueChange={(value) => {
+                if (!value) return
+                const protocol = value as Server['protocol']
+                setForm((current) => ({
+                  ...current,
+                  protocol,
+                  host: current.protocol === 'serial' || protocol === 'serial' ? '' : current.host,
+                  port: protocol === 'telnet'
+                    ? current.protocol === 'telnet' ? current.port : 23
+                    : protocol === 'ssh'
+                      ? current.protocol === 'ssh' ? current.port : 22
+                      : current.port,
+                  username: protocol === 'serial' ? '' : current.username || 'root',
+                }))
+              }}
               className="sm:col-span-2"
               aria-label={t('protocol')}
             >
