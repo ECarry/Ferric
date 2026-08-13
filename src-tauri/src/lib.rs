@@ -1,6 +1,9 @@
 mod error;
 mod sftp;
 mod ssh;
+mod protocol;
+mod serial;
+mod telnet;
 mod store;
 mod docker;
 mod forward;
@@ -11,6 +14,7 @@ mod logs;
 use tauri::Manager;
 use sftp::SftpManager;
 use ssh::SshManager;
+use protocol::ProtocolManager;
 use forward::ForwardManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,6 +22,7 @@ pub fn run() {
   let mut builder = tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .manage(SshManager::default())
+    .manage(ProtocolManager::default())
     .manage(SftpManager::default())
     .manage(ForwardManager::default())
     .setup(|app| {
@@ -49,6 +54,10 @@ pub fn run() {
       ssh::ssh_send_input,
       ssh::ssh_resize,
       ssh::ssh_disconnect,
+      protocol::protocol_connect,
+      protocol::protocol_send_input,
+      protocol::protocol_disconnect,
+      serial::list_serial_ports,
       store::load_config,
       store::save_config,
       store::delete_server_secret,

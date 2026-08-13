@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 
 use crate::error::AppError;
+use crate::protocol::ProtocolManager;
 
 /// Path to the known_hosts file, set once during app startup.
 static KNOWN_HOSTS_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -36,20 +37,33 @@ fn save_known_hosts(map: &std::collections::BTreeMap<String, String>) -> std::io
     let Some(path) = KNOWN_HOSTS_PATH.get() else {
         return Ok(());
     };
-    let json = serde_json::to_vec_pretty(map)
-        .map_err(std::io::Error::other)?;
+    let json = serde_json::to_vec_pretty(map).map_err(std::io::Error::other)?;
     let temp_path = path.with_extension("json.tmp");
     std::fs::write(&temp_path, json)?;
     std::fs::rename(temp_path, path)
+}
+
+fn default_protocol() -> String {
+    "ssh".to_string()
 }
 
 /// Config sent from the frontend to open a connection.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectConfig {
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
     pub host: String,
     pub port: u16,
     pub username: String,
+    #[serde(default)]
+    pub baud_rate: Option<u32>,
+    #[serde(default)]
+    pub data_bits: Option<u8>,
+    #[serde(default)]
+    pub parity: Option<String>,
+    #[serde(default)]
+    pub stop_bits: Option<u8>,
     /// "password" | "key"
     pub auth_type: String,
     pub password: Option<String>,
@@ -112,7 +126,9 @@ impl client::Handler for Client {
         let key = self.key_for();
 
         let lock = KNOWN_HOSTS_LOCK.get_or_init(Mutex::default);
-        let _guard = lock.lock().map_err(|_| russh::Error::IO(std::io::Error::other("known_hosts lock poisoned")))?;
+        let _guard = lock
+            .lock()
+            .map_err(|_| russh::Error::IO(std::io::Error::other("known_hosts lock poisoned")))?;
         let mut hosts = load_known_hosts();
         match hosts.get(&key) {
             Some(known_fp) if known_fp == &fp => {
@@ -322,6 +338,7 @@ pub async fn ssh_connect(
 #[tauri::command]
 pub fn ssh_send_input(
     state: State<'_, SshManager>,
+    protocol_state: State<'_, ProtocolManager>,
     id: String,
     data: String,
 ) -> Result<(), AppError> {
@@ -329,17 +346,19 @@ pub fn ssh_send_input(
         .sessions
         .lock()
         .map_err(|e| AppError::new("errUnknown").detail(e))?;
-    let tx = sessions
-        .get(&id)
-        .ok_or_else(|| AppError::new("errSshNoSession"))?;
-    tx.send(InputMsg::Data(data.into_bytes()))
-        .map_err(|_| AppError::new("errSshSessionClosed"))?;
-    Ok(())
+    if let Some(tx) = sessions.get(&id) {
+        tx.send(InputMsg::Data(data.as_bytes().to_vec()))
+            .map_err(|_| AppError::new("errSshSessionClosed"))?;
+        return Ok(());
+    }
+    drop(sessions);
+    protocol_state.send_input(&id, data)
 }
 
 #[tauri::command]
 pub fn ssh_resize(
     state: State<'_, SshManager>,
+    protocol_state: State<'_, ProtocolManager>,
     id: String,
     cols: u32,
     rows: u32,
@@ -348,20 +367,27 @@ pub fn ssh_resize(
         .sessions
         .lock()
         .map_err(|e| AppError::new("errUnknown").detail(e))?;
-    let tx = sessions
-        .get(&id)
-        .ok_or_else(|| AppError::new("errSshNoSession"))?;
+    let Some(tx) = sessions.get(&id) else {
+        drop(sessions);
+        let _ = (protocol_state, cols, rows);
+        return Ok(());
+    };
     tx.send(InputMsg::Resize { cols, rows })
         .map_err(|_| AppError::new("errSshSessionClosed"))?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn ssh_disconnect(state: State<'_, SshManager>, id: String) -> Result<(), AppError> {
+pub fn ssh_disconnect(
+    state: State<'_, SshManager>,
+    protocol_state: State<'_, ProtocolManager>,
+    id: String,
+) -> Result<(), AppError> {
     let mut sessions = state.sessions.lock().map_err(|e| e.to_string())?;
-    let tx = sessions
-        .remove(&id)
-        .ok_or_else(|| AppError::new("errSshNoSession"))?;
-    let _ = tx.send(InputMsg::Close);
-    Ok(())
+    if let Some(tx) = sessions.remove(&id) {
+        let _ = tx.send(InputMsg::Close);
+        return Ok(());
+    }
+    drop(sessions);
+    protocol_state.disconnect(&id)
 }

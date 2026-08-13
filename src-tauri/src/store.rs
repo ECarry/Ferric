@@ -9,13 +9,27 @@ use crate::error::AppError;
 /// Keychain service under which per-server passwords are stored.
 const KEYCHAIN_SERVICE: &str = "com.ferric.app";
 
+fn default_protocol() -> String {
+    "ssh".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Server {
     pub id: String,
     pub name: String,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
     pub host: String,
     pub port: u16,
+    #[serde(default)]
+    pub baud_rate: Option<u32>,
+    #[serde(default)]
+    pub data_bits: Option<u8>,
+    #[serde(default)]
+    pub parity: Option<String>,
+    #[serde(default)]
+    pub stop_bits: Option<u8>,
     pub username: String,
     /// "password" | "key"
     pub auth_type: String,
@@ -73,8 +87,7 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, AppError> {
         .path()
         .app_config_dir()
         .map_err(|e| AppError::new("errConfigDir").detail(e))?;
-    fs::create_dir_all(&dir)
-        .map_err(|e| AppError::new("errConfigDirCreate").detail(e))?;
+    fs::create_dir_all(&dir).map_err(|e| AppError::new("errConfigDirCreate").detail(e))?;
     Ok(dir.join("config.json"))
 }
 
@@ -110,15 +123,16 @@ pub fn load_config(app: AppHandle) -> Result<Config, AppError> {
     let path = config_path(&app)?;
     let backup_path = path.with_extension("json.bak");
     let mut config: Config = if path.exists() {
-        let raw = fs::read_to_string(&path)
-            .map_err(|e| AppError::new("errConfigRead").detail(e))?;
+        let raw =
+            fs::read_to_string(&path).map_err(|e| AppError::new("errConfigRead").detail(e))?;
         match serde_json::from_str(&raw) {
             Ok(config) => config,
             Err(primary_error) if backup_path.exists() => {
                 let backup = fs::read_to_string(&backup_path)
                     .map_err(|e| AppError::new("errConfigRead").detail(e))?;
-                serde_json::from_str(&backup)
-                    .map_err(|e| AppError::new("errConfigParse").detail(format!("{primary_error}; backup: {e}")))?
+                serde_json::from_str(&backup).map_err(|e| {
+                    AppError::new("errConfigParse").detail(format!("{primary_error}; backup: {e}"))
+                })?
             }
             Err(error) => return Err(AppError::new("errConfigParse").detail(error)),
         }
@@ -159,9 +173,7 @@ pub fn save_config(app: AppHandle, config: Config) -> Result<(), AppError> {
             delete_secret(&passphrase_account(&server.id));
         } else if server.auth_type == "key" {
             match server.key_passphrase.take() {
-                Some(pp) if !pp.is_empty() => {
-                    write_secret(&passphrase_account(&server.id), &pp)?
-                }
+                Some(pp) if !pp.is_empty() => write_secret(&passphrase_account(&server.id), &pp)?,
                 _ => {}
             }
             delete_secret(&server.id);
@@ -176,12 +188,10 @@ pub fn save_config(app: AppHandle, config: Config) -> Result<(), AppError> {
     let temp_path = path.with_extension("json.tmp");
     let backup_path = path.with_extension("json.bak");
 
-    fs::write(&temp_path, json)
-        .map_err(|e| AppError::new("errConfigWrite").detail(e))?;
+    fs::write(&temp_path, json).map_err(|e| AppError::new("errConfigWrite").detail(e))?;
     if path.exists() {
         let _ = fs::remove_file(&backup_path);
-        fs::rename(&path, &backup_path)
-            .map_err(|e| AppError::new("errConfigWrite").detail(e))?;
+        fs::rename(&path, &backup_path).map_err(|e| AppError::new("errConfigWrite").detail(e))?;
     }
     if let Err(error) = fs::rename(&temp_path, &path) {
         if backup_path.exists() && !path.exists() {

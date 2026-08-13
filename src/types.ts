@@ -1,11 +1,17 @@
 export type AuthType = 'password' | 'key'
+export type ConnectionProtocol = 'ssh' | 'telnet' | 'serial'
 
 export interface Server {
   id: string
   name: string
+  protocol: ConnectionProtocol
   host: string
   port: number
   username: string
+  baudRate?: number
+  dataBits?: 5 | 6 | 7 | 8
+  parity?: 'none' | 'odd' | 'even'
+  stopBits?: 1 | 2
   authType: AuthType
   /** Only for UI mock — never store plaintext in a real app */
   password?: string

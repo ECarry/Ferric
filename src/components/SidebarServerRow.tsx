@@ -75,7 +75,7 @@ export function SidebarServerRow({
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{server.name}</div>
           <div className="truncate text-xs text-muted-foreground">
-            {server.username}@{server.host}
+            {server.protocol === 'serial' ? server.host : `${server.username}@${server.host}`}
           </div>
         </div>
         {connected && (

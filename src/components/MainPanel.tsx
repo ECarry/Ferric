@@ -12,6 +12,7 @@ import {
   sshConnect,
   sshDisconnect,
   sshSendInput,
+  protocolConnect,
   type SshConnectConfig,
 } from '@/lib/ssh'
 import { sftpConnect, sftpDisconnect } from '@/lib/sftp'
@@ -53,8 +54,13 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   const sshConfig = useMemo<SshConnectConfig | null>(() => {
     if (!server) return null
     return {
+      protocol: server.protocol ?? 'ssh',
       host: server.host,
       port: server.port,
+      baudRate: server.baudRate,
+      dataBits: server.dataBits,
+      parity: server.parity,
+      stopBits: server.stopBits,
       username: server.username,
       authType: server.authType,
       password: server.password ?? sessionPassword ?? undefined,
@@ -136,13 +142,14 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     setStatus('connecting')
     setError(null)
     try {
-      const id = await sshConnect(config)
+      const id = await (config.protocol === 'ssh' ? sshConnect(config) : protocolConnect(config))
       sessionRef.current = id
       setSessionId(id)
       setStatus('connected')
       if (passwordOverride !== undefined) setSessionPassword(passwordOverride)
       setPasswordPrompt(false)
       // Open a separate SFTP session (best-effort; failure only disables SFTP).
+      if (config.protocol !== 'ssh') return
       sftpConnect(config)
         .then((sid) => {
           sftpRef.current = sid
@@ -163,7 +170,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   if (!server) return <WelcomeScreen />
 
   const connected = status === 'connected' && sessionId
-  const passwordRequired = server.authType === 'password' && (!server.password && !sessionPassword || passwordPrompt)
+  const passwordRequired = (server.protocol ?? 'ssh') === 'ssh' && server.authType === 'password' && (!server.password && !sessionPassword || passwordPrompt)
   const meta = { label: t(status === 'error' ? 'connectionFailed' : status), color: statusColor[status] }
 
   return (
@@ -178,7 +185,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
             </Button>
           </div>
           <div className="truncate font-mono text-xs text-muted-foreground">
-            {server.username}@{server.host}:{server.port}
+            {server.protocol === 'serial' ? server.host : `${server.username}@${server.host}:${server.port}`}
           </div>
         </div>
 
@@ -215,6 +222,15 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           passwordRequired={passwordRequired}
           onConnect={connect}
         />
+      ) : server.protocol === 'serial' ? (
+        <TerminalWorkspace
+          key={sessionId}
+          initialSessionId={sessionId}
+          sshConfig={sshConfig!}
+          sftpReady={false}
+          active={active}
+          fileBrowser={() => null}
+        />
       ) : (
         <Tabs
           value={tab}
@@ -230,27 +246,27 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
                 <TerminalSquare className="h-4 w-4" />
                 {t('terminal')}
               </TabsTrigger>
-              <TabsTrigger value="sftp">
+              <TabsTrigger value="sftp" disabled={server.protocol !== 'ssh'}>
                 <FolderTree className="h-4 w-4" />
                 {t('files')}
               </TabsTrigger>
-              <TabsTrigger value="docker">
+              <TabsTrigger value="docker" disabled={server.protocol !== 'ssh'}>
                 <Container className="h-4 w-4" />
                 {t('containers')}
               </TabsTrigger>
-              <TabsTrigger value="forward">
+              <TabsTrigger value="forward" disabled={server.protocol !== 'ssh'}>
                 <Zap className="h-4 w-4" />
                 {t('portForward')}
               </TabsTrigger>
-              <TabsTrigger value="performance">
+              <TabsTrigger value="performance" disabled={server.protocol !== 'ssh'}>
                 <Activity className="h-4 w-4" />
                 {t('performance')}
               </TabsTrigger>
-              <TabsTrigger value="services">
+              <TabsTrigger value="services" disabled={server.protocol !== 'ssh'}>
                 <ServerCog className="h-4 w-4" />
                 {t('services')}
               </TabsTrigger>
-              <TabsTrigger value="logs">
+              <TabsTrigger value="logs" disabled={server.protocol !== 'ssh'}>
                 <FileText className="h-4 w-4" />
                 {t('logs')}
               </TabsTrigger>

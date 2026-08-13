@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Columns2, FolderTree, GripHorizontal, Loader2, PanelBottomClose, PanelBottomOpen, Plus, X } from 'lucide-react'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
-import { sshConnect, sshDisconnect, type SshConnectConfig } from '@/lib/ssh'
+import { protocolConnect, sshConnect, sshDisconnect, type SshConnectConfig } from '@/lib/ssh'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -97,7 +97,7 @@ export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, file
     setOpening(true)
     setError(null)
     try {
-      const sessionId = await sshConnect(sshConfig)
+      const sessionId = await (sshConfig.protocol === 'ssh' ? sshConnect(sshConfig) : protocolConnect(sshConfig))
       extraSessionsRef.current.push(sessionId)
       const nextNumber = windows.length + 1
       const nextWindow = {
@@ -289,7 +289,7 @@ export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, file
         {error && <div className="absolute bottom-3 left-3 z-10 rounded-md bg-destructive px-3 py-2 text-xs text-destructive-foreground">{error}</div>}
       </section>
 
-      {filePanelOpen ? (
+      {sshConfig.protocol === 'ssh' && (filePanelOpen ? (
         <aside className="relative flex min-h-0 w-full shrink-0 flex-col border-t border-border bg-background shadow-[0_-10px_30px_rgba(0,0,0,0.12)]" style={{ height: `${panelHeight}%` }}>
           <button type="button" aria-label={t('resizeFilePanel')} className="absolute -top-1.5 left-0 z-10 flex h-3 w-full cursor-row-resize items-center justify-center text-muted-foreground/60 hover:text-foreground" onPointerDown={startResizing}>
             <GripHorizontal className="h-3 w-8 rounded bg-background" />
@@ -303,7 +303,7 @@ export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, file
         </aside>
       ) : (
         <Button variant="outline" size="sm" className="absolute bottom-4 right-4 z-10 bg-background/95 shadow-lg backdrop-blur" onClick={() => setFilePanelOpen(true)}><PanelBottomOpen className="h-4 w-4" />{t('showFiles')}</Button>
-      )}
+      ))}
     </div>
   )
 }

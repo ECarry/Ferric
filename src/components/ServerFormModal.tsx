@@ -1,7 +1,8 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Eye, EyeOff, KeyRound, Loader2, Lock } from 'lucide-react'
 import type { Server, ServerGroup } from '@/types'
 import { cn } from '@/lib/utils'
+import { listSerialPorts } from '@/lib/serial'
 import { groupDisplayName } from '@/lib/groups'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface ServerFormModalProps {
   open: boolean
@@ -29,12 +31,19 @@ interface ServerFormModalProps {
   onSave: (server: Server) => void | Promise<void>
 }
 
+const COMMON_BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
+
 const emptyForm = (groupId: string): Server => ({
   id: '',
   name: '',
+  protocol: 'ssh',
   host: '',
   port: 22,
   username: 'root',
+  baudRate: 115200,
+  dataBits: 8,
+  parity: 'none',
+  stopBits: 1,
   authType: 'password',
   groupId,
   color: '#6366f1',
@@ -87,10 +96,41 @@ function ServerFormInner({
 }) {
   const { t } = useI18n()
   const [form, setForm] = useState<Server>(
-    initial ? { ...initial } : emptyForm(groups[0]?.id ?? ''),
+    initial ? { ...initial, protocol: initial.protocol || 'ssh' } : emptyForm(groups[0]?.id ?? ''),
   )
   const [submitting, setSubmitting] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
+  const [serialPorts, setSerialPorts] = useState<string[]>([])
+  const [loadingSerialPorts, setLoadingSerialPorts] = useState(false)
+  const [customBaudRate, setCustomBaudRate] = useState(
+    () => !COMMON_BAUD_RATES.includes(initial?.baudRate ?? 115200),
+  )
+
+  useEffect(() => {
+    if (form.protocol !== 'serial') return
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) setLoadingSerialPorts(true)
+    })
+    listSerialPorts()
+      .then((ports) => {
+        if (cancelled) return
+        setSerialPorts(ports)
+        setForm((current) => current.host ? current : { ...current, host: ports[0] ?? '' })
+      })
+      .catch(() => {
+        if (!cancelled) setSerialPorts([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSerialPorts(false)
+      })
+    return () => { cancelled = true }
+  }, [form.protocol])
+
+  const serialPortOptions = form.host && !serialPorts.includes(form.host)
+    ? [form.host, ...serialPorts]
+    : serialPorts
+  const isCommonBaudRate = !customBaudRate
 
   // Validate host: IPv4, IPv6, or domain name (with optional port already separate).
   const validateHost = (value: string): boolean => {
@@ -119,7 +159,8 @@ function ServerFormInner({
     return false
   }
 
-  const isHostValid = useMemo(() => validateHost(form.host), [form.host])
+  const hostFormatValid = useMemo(() => validateHost(form.host), [form.host])
+  const isHostValid = form.protocol === 'serial' ? form.host.trim().length > 0 : hostFormatValid
 
   const set = <K extends keyof Server>(key: K, value: Server[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -127,7 +168,7 @@ function ServerFormInner({
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     const trimmedHost = form.host.trim()
-    if (!validateHost(trimmedHost) || !form.name.trim() || !form.username.trim()) return
+    if (!isHostValid || !form.name.trim() || (form.protocol !== 'serial' && !form.username.trim())) return
     setSubmitting(true)
     try {
       await onSave({
@@ -146,6 +187,18 @@ function ServerFormInner({
 
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Tabs
+              value={form.protocol}
+              onValueChange={(value) => set('protocol', value as Server['protocol'])}
+              className="sm:col-span-2"
+              aria-label={t('protocol')}
+            >
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="ssh">SSH</TabsTrigger>
+                <TabsTrigger value="telnet">Telnet</TabsTrigger>
+                <TabsTrigger value="serial">{t('serial')}</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <Field label={t('name')}>
               <Input
                 required
@@ -182,43 +235,119 @@ function ServerFormInner({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="sm:col-span-2">
-              <Field label={t('host')}>
-                <Input
-                  required
-                  value={form.host}
-                  aria-invalid={!isHostValid && form.host.length > 0}
-                  aria-describedby={!isHostValid && form.host.length > 0 ? 'host-error' : undefined}
-                  onChange={(e) => set('host', e.target.value)}
-                  placeholder="10.0.1.11"
-                />
-                {form.host.length > 0 && !isHostValid && (
-                  <p id="host-error" className="mt-1 text-xs text-destructive" role="alert">{t('errInvalidHost')}</p>
+              <Field label={form.protocol === 'serial' ? t('serialPort') : t('host')}>
+                {form.protocol === 'serial' ? (
+                  <Select value={form.host} onValueChange={(value) => value && set('host', value)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={loadingSerialPorts ? t('loadingSerialPorts') : t('selectSerialPort')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {serialPortOptions.length > 0 ? serialPortOptions.map((port) => (
+                        <SelectItem key={port} value={port}>{port}</SelectItem>
+                      )) : (
+                        <SelectItem value="__no_serial_ports__" disabled>{t('noSerialPorts')}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <>
+                    <Input
+                      required
+                      value={form.host}
+                      aria-invalid={!isHostValid && form.host.length > 0}
+                      aria-describedby={!isHostValid && form.host.length > 0 ? 'host-error' : undefined}
+                      onChange={(e) => set('host', e.target.value)}
+                      placeholder="10.0.1.11"
+                    />
+                    {form.host.length > 0 && !isHostValid && (
+                      <p id="host-error" className="mt-1 text-xs text-destructive" role="alert">{t('errInvalidHost')}</p>
+                    )}
+                  </>
                 )}
               </Field>
             </div>
-            <Field label={t('port')}>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={65535}
-                required
-                value={form.port}
-                onChange={(e) => set('port', Math.min(65535, Math.max(1, Number(e.target.value) || 22)))}
-              />
-            </Field>
+            {form.protocol !== 'serial' && (
+              <Field label={t('port')}>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={65535}
+                  required
+                  value={form.port}
+                  onChange={(e) => set('port', Math.min(65535, Math.max(1, Number(e.target.value) || 22)))}
+                />
+              </Field>
+            )}
           </div>
 
-          <Field label={t('username')}>
-            <Input
-              required
-              value={form.username}
-              onChange={(e) => set('username', e.target.value)}
-              placeholder="root"
-            />
-          </Field>
+          {form.protocol === 'serial' ? (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Field label={t('baudRate')}>
+                <Select
+                  value={isCommonBaudRate ? String(form.baudRate ?? 115200) : 'custom'}
+                  onValueChange={(value) => {
+                    if (!value) return
+                    if (value === 'custom') {
+                      setCustomBaudRate(true)
+                    } else {
+                      setCustomBaudRate(false)
+                      set('baudRate', Number(value))
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {COMMON_BAUD_RATES.map((rate) => <SelectItem key={rate} value={String(rate)}>{rate}</SelectItem>)}
+                    <SelectItem value="custom">{t('custom')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {!isCommonBaudRate && (
+                  <Input
+                    className="mt-2"
+                    type="number"
+                    min={110}
+                    max={4000000}
+                    value={form.baudRate ?? 115200}
+                    onChange={(e) => set('baudRate', Number(e.target.value) || 115200)}
+                    aria-label={t('customBaudRate')}
+                  />
+                )}
+              </Field>
+              <Field label={t('dataBits')}>
+                <Select value={String(form.dataBits ?? 8)} onValueChange={(value) => value && set('dataBits', Number(value) as Server['dataBits'])}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>{[5, 6, 7, 8].map((value) => <SelectItem key={value} value={String(value)}>{value}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+              <Field label={t('parity')}>
+                <Select value={form.parity ?? 'none'} onValueChange={(value) => value && set('parity', value as Server['parity'])}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="odd">Odd</SelectItem>
+                    <SelectItem value="even">Even</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label={t('stopBits')}>
+                <Select value={String(form.stopBits ?? 1)} onValueChange={(value) => value && set('stopBits', Number(value) as Server['stopBits'])}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1</SelectItem>
+                    <SelectItem value="2">2</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+          ) : (
+            <Field label={t('username')}>
+              <Input required value={form.username} onChange={(e) => set('username', e.target.value)} placeholder="root" />
+            </Field>
+          )}
 
-          <Field label={t('authentication')}>
+          {form.protocol === 'ssh' && <>
+            <Field label={t('authentication')}>
             <div className="flex gap-2">
               <AuthTab
                 active={form.authType === 'password'}
@@ -274,12 +403,13 @@ function ServerFormInner({
               </Field>
             </div>
           )}
+          </>}
 
           <DialogFooter className="mt-2">
             <Button type="button" variant="outline" onClick={onCancel}>
               {t('cancel')}
             </Button>
-            <Button type="submit" disabled={!isHostValid || !form.name.trim() || !form.username.trim() || submitting} aria-busy={submitting}>
+            <Button type="submit" disabled={!isHostValid || !form.name.trim() || (form.protocol !== 'serial' && !form.username.trim()) || submitting} aria-busy={submitting}>
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {t('save')}
             </Button>

@@ -2,9 +2,14 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 export interface SshConnectConfig {
+  protocol: 'ssh' | 'telnet' | 'serial'
   host: string
   port: number
   username: string
+  baudRate?: number
+  dataBits?: 5 | 6 | 7 | 8
+  parity?: 'none' | 'odd' | 'even'
+  stopBits?: 1 | 2
   authType: 'password' | 'key'
   password?: string
   keyPath?: string
@@ -25,6 +30,18 @@ interface SshClosedPayload {
 /** Open an SSH connection with an interactive PTY. Returns the session id. */
 export function sshConnect(config: SshConnectConfig): Promise<string> {
   return invoke<string>('ssh_connect', { config })
+}
+
+export function protocolConnect(config: SshConnectConfig): Promise<string> {
+  return invoke<string>('protocol_connect', { config })
+}
+
+export function protocolSendInput(id: string, data: string): Promise<void> {
+  return invoke('protocol_send_input', { id, data })
+}
+
+export function protocolDisconnect(id: string): Promise<void> {
+  return invoke('protocol_disconnect', { id })
 }
 
 /** Send keystrokes / input bytes to the remote shell. */
