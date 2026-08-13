@@ -1,0 +1,48 @@
+name: "Patch Updater Notes"
+
+# Manually overwrite a published release's latest.json "notes" with the full
+# annotated tag message. tauri-action defaults the updater manifest notes to
+# the last commit subject, so the in-app updater otherwise shows a single line.
+# This job does NOT rebuild the app; it only patches the existing manifest.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to patch (e.g. v0.1.15)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch latest.json notes with the tag message
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}" --force
+          body=$(git tag -l --format='%(contents)' "$TAG")
+          if [ -z "$body" ]; then
+            echo "The tag does not contain release notes." >&2
+            exit 1
+          fi
+          echo "Release notes to embed:"
+          echo "$body"
+          mkdir -p updater-manifest
+          gh release download "$TAG" --pattern latest.json --dir updater-manifest --clobber
+          jq --arg notes "$body" '.notes = $notes' updater-manifest/latest.json > updater-manifest/latest.patched.json
+          mv updater-manifest/latest.patched.json updater-manifest/latest.json
+          echo "Patched notes:"
+          jq -r '.notes' updater-manifest/latest.json
+          gh release upload "$TAG" updater-manifest/latest.json --clobber

@@ -145,12 +145,18 @@ jobs:
           TAG: ${{ github.ref_name }}
         shell: bash
         run: |
+          set -euo pipefail
           body=$(git tag -l --format='%(contents)' "$TAG")
           if [ -z "$body" ]; then
             echo "The tag does not contain release notes." >&2
             exit 1
           fi
-          gh release download "$TAG" --pattern latest.json --output latest.json --clobber
-          jq --arg notes "$body" '.notes = $notes' latest.json > latest.patched.json
-          mv latest.patched.json latest.json
-          gh release upload "$TAG" latest.json --clobber
+          echo "Release notes to embed:"
+          echo "$body"
+          mkdir -p updater-manifest
+          gh release download "$TAG" --pattern latest.json --dir updater-manifest --clobber
+          jq --arg notes "$body" '.notes = $notes' updater-manifest/latest.json > updater-manifest/latest.patched.json
+          mv updater-manifest/latest.patched.json updater-manifest/latest.json
+          echo "Patched notes:"
+          jq -r '.notes' updater-manifest/latest.json
+          gh release upload "$TAG" updater-manifest/latest.json --clobber
