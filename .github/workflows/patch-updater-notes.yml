@@ -45,4 +45,38 @@ jobs:
           mv updater-manifest/latest.patched.json updater-manifest/latest.json
           echo "Patched notes:"
           jq -r '.notes' updater-manifest/latest.json
-          gh release upload "$TAG" updater-manifest/latest.json --clobber
+
+      - name: Upload patched latest.json
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ inputs.tag }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const tag = process.env.TAG;
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag
+            });
+            const existing = release.assets.find(a => a.name === 'latest.json');
+            if (existing) {
+              await github.rest.repos.deleteReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: existing.id
+              });
+              console.log(`Deleted existing latest.json asset ${existing.id}`);
+            }
+            const data = fs.readFileSync('updater-manifest/latest.json');
+            await github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+              name: 'latest.json',
+              data,
+              headers: { 'content-type': 'application/json', 'content-length': data.length }
+            });
+            console.log('Uploaded patched latest.json');
+
