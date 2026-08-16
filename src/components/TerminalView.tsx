@@ -20,6 +20,9 @@ interface TerminalViewProps {
   onOutput?: (bytes: Uint8Array) => void
 }
 
+const ACTIVE_SCROLLBACK = 10_000
+const INACTIVE_SCROLLBACK = 2_000
+
 export function TerminalView({ sessionId, active = true, history = [], onOutput }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -43,7 +46,7 @@ export function TerminalView({ sessionId, active = true, history = [], onOutput 
     const theme = getTerminalTheme(settings.themeId)
 
     const term = new Terminal({
-      scrollback: 10_000,
+      scrollback: activeRef.current ? ACTIVE_SCROLLBACK : INACTIVE_SCROLLBACK,
       fontFamily: settings.fontFamily,
       fontSize: settings.fontSize,
       cursorBlink: settings.cursorBlink,
@@ -132,6 +135,9 @@ export function TerminalView({ sessionId, active = true, history = [], onOutput 
 
   useEffect(() => {
     activeRef.current = active
+    if (termRef.current) {
+      termRef.current.options.scrollback = active ? ACTIVE_SCROLLBACK : INACTIVE_SCROLLBACK
+    }
     if (!active) return
 
     const frame = requestAnimationFrame(() => {
