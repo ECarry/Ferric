@@ -203,6 +203,8 @@ pub fn save_config(app: AppHandle, config: Config) -> Result<(), AppError> {
                         return Err(error);
                     }
                 }
+                // Empty/absent password on save leaves any existing keychain entry
+                // untouched so editing other fields doesn't wipe the secret.
                 _ => {}
             }
             delete_secret(&passphrase_account(&server.id));
