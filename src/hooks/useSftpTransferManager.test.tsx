@@ -50,6 +50,28 @@ describe('useSftpTransferManager', () => {
     expect(mocks.sftpCancel).not.toHaveBeenCalled()
   })
 
+  it('cancels active transfers when the manager unmounts', async () => {
+    const { result, unmount } = renderHook(() => useSftpTransferManager('session-1'))
+    let resolveRun: (() => void) | undefined
+    const startPromise = result.current.start({
+      kind: 'download',
+      label: 'large.zip',
+      run: () => new Promise<void>((resolve) => {
+        resolveRun = resolve
+      }),
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    unmount()
+    expect(mocks.sftpCancel).toHaveBeenCalledWith('transfer-1')
+
+    resolveRun?.()
+    await startPromise
+  })
+
   it('keeps only the latest transfer history entries', async () => {
     const { result } = renderHook(() => useSftpTransferManager('session-1'))
 

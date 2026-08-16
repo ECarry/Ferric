@@ -50,6 +50,7 @@ export function useSftpTransferManager(sessionId: string) {
   const queuedIds = useRef(new Set<string>())
   const runners = useRef(new Map<string, StartTransferOptions>())
   const cancelledIds = useRef(new Set<string>())
+  const activeTransferIds = useRef(new Set<string>())
   const disposed = useRef(false)
 
   useEffect(() => {
@@ -57,14 +58,20 @@ export function useSftpTransferManager(sessionId: string) {
     const queuedIdsRef = queuedIds.current
     const runnersRef = runners.current
     const cancelledIdsRef = cancelledIds.current
+    const activeTransferIdsRef = activeTransferIds.current
     return () => {
       disposed.current = true
       const waiters = [...waitersRef.values()]
+      const activeTransferIds = [...activeTransferIdsRef]
       waitersRef.clear()
       queuedIdsRef.clear()
       runnersRef.clear()
       cancelledIdsRef.clear()
+      activeTransferIdsRef.clear()
       waiters.forEach((resolve) => resolve())
+      activeTransferIds.forEach((id) => {
+        void sftpCancel(id).catch(() => undefined)
+      })
     }
   }, [])
 
@@ -103,6 +110,7 @@ export function useSftpTransferManager(sessionId: string) {
       updateTask(id, { status: 'running' })
     }
 
+    activeTransferIds.current.add(id)
     const onProgress = (progress: TransferProgress) => {
       if (progress.transferId === id && progress.sessionId === sessionId) {
         updateTask(id, {
@@ -132,6 +140,7 @@ export function useSftpTransferManager(sessionId: string) {
       })
       throw error
     } finally {
+      activeTransferIds.current.delete(id)
       unlistenUpload()
       unlistenDownload()
     }
