@@ -11,6 +11,7 @@ import {
   getTerminalTheme,
   type TerminalSettings,
 } from '@/lib/terminal-settings'
+import { decodeTerminalChunk } from '@/lib/terminal-output'
 
 interface TerminalViewProps {
   sessionId: string
@@ -18,8 +19,6 @@ interface TerminalViewProps {
   history?: Uint8Array[]
   onOutput?: (bytes: Uint8Array) => void
 }
-
-const decoder = new TextDecoder()
 
 export function TerminalView({ sessionId, active = true, history = [], onOutput }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -78,14 +77,19 @@ export function TerminalView({ sessionId, active = true, history = [], onOutput 
     term.loadAddon(new WebLinksAddon())
     term.open(container)
     fit.fit()
-    for (const bytes of historyRef.current) term.write(decoder.decode(bytes))
+    const decoder = new TextDecoder()
+    for (const bytes of historyRef.current) {
+      term.write(decodeTerminalChunk(decoder, bytes))
+    }
+    const historyRemainder = decoder.decode()
+    if (historyRemainder) term.write(historyRemainder)
 
     // Remote shell output -> terminal. Keep receiving output while hidden so no terminal history is lost.
     let disposed = false
     let unlisten: UnlistenFn | undefined
     void onSshData(sessionId, (bytes) => {
       onOutputRef.current?.(bytes)
-      term.write(decoder.decode(bytes))
+      term.write(decodeTerminalChunk(decoder, bytes))
     }).then((fn) => {
       if (disposed) fn()
       else unlisten = fn
