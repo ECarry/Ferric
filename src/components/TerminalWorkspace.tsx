@@ -107,6 +107,7 @@ export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, file
         closable: true,
       }
       setWindows((current) => [...current, nextWindow])
+      setPaneIds((current) => current.length === 2 ? [current[0], nextWindow.id] : [nextWindow.id])
       setActiveWindowId(nextWindow.id)
     } catch {
       setError(t('terminalWindowOpenFailed'))

@@ -26,6 +26,7 @@ export function TerminalView({ sessionId, active = true, history = [], onOutput 
   const fitRef = useRef<FitAddon | null>(null)
   const activeRef = useRef(active)
   const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null)
+  const syncSizeRef = useRef<(() => void) | null>(null)
   const historyRef = useRef(history)
   const onOutputRef = useRef(onOutput)
 
@@ -110,6 +111,7 @@ export function TerminalView({ sessionId, active = true, history = [], onOutput 
         void sshResize(sessionId, term.cols, term.rows)
       }
     }
+    syncSizeRef.current = syncSize
     const resizeObserver = new ResizeObserver(syncSize)
     resizeObserver.observe(container)
     syncSize()
@@ -118,6 +120,7 @@ export function TerminalView({ sessionId, active = true, history = [], onOutput 
 
     return () => {
       disposed = true
+      syncSizeRef.current = null
       resizeObserver.disconnect()
       dataSub.dispose()
       unlisten?.()
@@ -131,9 +134,11 @@ export function TerminalView({ sessionId, active = true, history = [], onOutput 
     activeRef.current = active
     if (!active) return
 
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
+      syncSizeRef.current?.()
       termRef.current?.focus()
     })
+    return () => cancelAnimationFrame(frame)
   }, [active, sessionId])
 
   // Live-apply settings changes without recreating the terminal.
