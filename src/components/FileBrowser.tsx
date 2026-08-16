@@ -289,7 +289,7 @@ export function FileBrowser({ sessionId, onSendToTerminal }: FileBrowserProps) {
     try {
       await start({
         kind: 'upload',
-        label: `${paths.length} dropped item${paths.length === 1 ? '' : 's'}`,
+        label: t('droppedItems', { count: paths.length }),
         run: async (transferId) => {
           for (const localPath of paths) {
             try {
@@ -555,11 +555,11 @@ export function FileBrowser({ sessionId, onSendToTerminal }: FileBrowserProps) {
       {tasks.length > 0 && (
         <div className="max-h-40 space-y-1 overflow-auto border-t border-border px-4 py-2 text-xs">
           <div className="flex items-center justify-between pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-            <span>{history.length > 0 ? `History (${history.length})` : 'Transfers'}</span>
+            <span>{history.length > 0 ? t('transferHistory', { count: history.length }) : t('transfers')}</span>
             <Button
               variant="ghost"
               size="icon-xs"
-              title={paused ? 'Resume transfers' : 'Pause transfers'}
+              title={paused ? t('resumeTransfers') : t('pauseTransfers')}
               onClick={paused ? resume : pause}
             >
               {paused ? <Play className="h-3.5 w-3.5" /> : <span className="text-[10px]">II</span>}
@@ -587,7 +587,7 @@ export function FileBrowser({ sessionId, onSendToTerminal }: FileBrowserProps) {
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    title="Retry"
+                    title={t('retry')}
                     onClick={() => void onRetryTask(task.id)}
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
