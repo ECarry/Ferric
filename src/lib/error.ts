@@ -42,7 +42,7 @@ export function formatAppError(
     // still shows the (translated) raw detail when available.
     if (msg === code) {
       msg = t('errUnknown', { detail: detail ?? '' })
-    } else if (detail) {
+    } else if (detail && import.meta.env.DEV) {
       msg += ` (${detail})`
     }
     return msg
