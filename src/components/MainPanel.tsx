@@ -50,6 +50,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   const sftpRef = useRef<string | null>(null)
   const serverIdRef = useRef<string | undefined>(server?.id)
   const statusChangeRef = useRef(onStatusChange)
+  const connectionGenerationRef = useRef(0)
 
   const sshConfig = useMemo<SshConnectConfig | null>(() => {
     if (!server) return null
@@ -72,6 +73,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   }, [server, sessionPassword])
 
   const reset = useCallback(() => {
+    connectionGenerationRef.current += 1
     if (sessionRef.current) void sshDisconnect(sessionRef.current)
     if (sftpRef.current) void sftpDisconnect(sftpRef.current)
     sessionRef.current = null
@@ -89,6 +91,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   // server gets its own persistent MainPanel instance.
   useEffect(() => {
     return () => {
+      connectionGenerationRef.current += 1
       if (sessionRef.current) void sshDisconnect(sessionRef.current)
       if (sftpRef.current) void sftpDisconnect(sftpRef.current)
     }
@@ -136,6 +139,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
 
   const connect = useCallback(async (passwordOverride?: string) => {
     if (!sshConfig) return
+    const generation = connectionGenerationRef.current + 1
+    connectionGenerationRef.current = generation
     const config = passwordOverride === undefined
       ? sshConfig
       : { ...sshConfig, password: passwordOverride }
@@ -143,6 +148,10 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     setError(null)
     try {
       const id = await (config.protocol === 'ssh' ? sshConnect(config) : protocolConnect(config))
+      if (connectionGenerationRef.current !== generation) {
+        void sshDisconnect(id)
+        return
+      }
       sessionRef.current = id
       setSessionId(id)
       setStatus('connected')
@@ -152,11 +161,20 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       if (config.protocol !== 'ssh') return
       sftpConnect(config)
         .then((sid) => {
+          if (connectionGenerationRef.current !== generation) {
+            void sftpDisconnect(sid)
+            return
+          }
           sftpRef.current = sid
           setSftpId(sid)
         })
-        .catch((e) => console.error('SFTP 连接失败', e))
+        .catch((e) => {
+          if (connectionGenerationRef.current === generation) {
+            console.error('SFTP 连接失败', e)
+          }
+        })
     } catch (e) {
+      if (connectionGenerationRef.current !== generation) return
       setStatus('error')
       setError(formatAppError(e, t))
       if (isAppError(e) && e.code === 'errSshNoPassword') {
