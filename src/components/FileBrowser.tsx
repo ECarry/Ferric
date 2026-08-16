@@ -307,6 +307,7 @@ export function FileBrowser({ sessionId, onSendToTerminal }: FileBrowserProps) {
   }, [invalidateDirectory, path, sessionId, start, t])
 
   useEffect(() => {
+    let disposed = false
     let unlisten: UnlistenFn | undefined
     getCurrentWebview().onDragDropEvent((event) => {
       if (event.payload.type === 'enter' || event.payload.type === 'over') {
@@ -334,9 +335,11 @@ export function FileBrowser({ sessionId, onSendToTerminal }: FileBrowserProps) {
         dragPathsRef.current = []
       }
     }).then((fn) => {
-      unlisten = fn
+      if (disposed) fn()
+      else unlisten = fn
     })
     return () => {
+      disposed = true
       unlisten?.()
     }
   }, [isDraggingOver, onDropUpload, path, sessionId, t])
