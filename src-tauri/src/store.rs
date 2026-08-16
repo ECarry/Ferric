@@ -264,3 +264,42 @@ pub fn delete_server_secret(server_id: String) -> Result<(), AppError> {
     delete_secret(&passphrase_account(&server_id));
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{passphrase_account, Server};
+
+    #[test]
+    fn builds_passphrase_accounts_without_ambiguity() {
+        assert_eq!(passphrase_account("server-1"), "server-1:passphrase");
+    }
+
+    #[test]
+    fn does_not_serialize_secret_values_or_presence_flags() {
+        let server = Server {
+            id: "server-1".into(),
+            name: "Test".into(),
+            protocol: "ssh".into(),
+            host: "example.com".into(),
+            port: 22,
+            baud_rate: None,
+            data_bits: None,
+            parity: None,
+            stop_bits: None,
+            username: "root".into(),
+            auth_type: "password".into(),
+            password: None,
+            has_password: true,
+            key_path: None,
+            key_passphrase: None,
+            has_key_passphrase: false,
+            group_id: "g-prod".into(),
+            color: None,
+            last_connected: None,
+        };
+        let value = serde_json::to_value(server).expect("server should serialize");
+        assert!(value.get("password").is_none());
+        assert!(value.get("hasPassword").is_none());
+        assert!(value.get("hasKeyPassphrase").is_none());
+    }
+}
