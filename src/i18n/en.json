@@ -88,6 +88,7 @@
   "connect": "Connect",
   "terminal": "Terminal",
   "terminalWindow": "Terminal {{number}}",
+  "terminalWindows": "Terminal windows",
   "newTerminalWindow": "New terminal window",
   "closeTerminalWindow": "Close terminal window",
   "renameTerminalWindow": "Rename terminal window",

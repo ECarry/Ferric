@@ -176,13 +176,15 @@ export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, sftp
   return (
     <div ref={workspaceRef} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#0b0d10]">
       <div className="flex h-10 shrink-0 items-center border-b border-border bg-muted/30 px-2">
-        <div className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto">
+        <div className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto" role="tablist" aria-label={t('terminalWindows')}>
           {windows.map((item) => (
             <ContextMenu key={item.id}>
               <ContextMenuTrigger
                 render={
                   <button
                     type="button"
+                    role="tab"
+                    aria-selected={item.id === activeWindowId}
                     draggable
                     className={`group flex min-w-32 max-w-52 items-center gap-2 border-b-2 px-3 text-xs transition-colors ${
                       item.id === activeWindowId ? 'border-primary bg-background text-foreground' : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'

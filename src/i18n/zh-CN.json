@@ -88,6 +88,7 @@
   "connect": "连接",
   "terminal": "终端",
   "terminalWindow": "终端 {{number}}",
+  "terminalWindows": "终端窗口",
   "newTerminalWindow": "新建终端窗口",
   "closeTerminalWindow": "关闭终端窗口",
   "renameTerminalWindow": "重命名终端窗口",
