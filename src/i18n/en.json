@@ -5,6 +5,8 @@
   "noSearchResults": "No matching servers",
   "loadingConfiguration": "Loading configuration...",
   "configurationLoadFailed": "Failed to load configuration.",
+  "savingConfiguration": "Saving configuration...",
+  "configurationSaveFailed": "Failed to save configuration.",
   "retry": "Try again",
   "groups": "Groups",
   "closeSidebar": "Close sidebar",

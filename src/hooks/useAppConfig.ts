@@ -28,7 +28,7 @@ export function useAppConfig() {
     const config = pendingConfig.current
     pendingConfig.current = undefined
     saving.current = true
-    void mutateAsync(config).finally(() => {
+    void mutateAsync(config).catch(() => undefined).finally(() => {
       saving.current = false
       if (pendingConfig.current) {
         saveTimer.current = setTimeout(() => flushSaveRef.current(), 500)

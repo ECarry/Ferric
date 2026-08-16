@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Menu } from 'lucide-react'
+import { CircleAlert, Loader2, Menu } from 'lucide-react'
 import { useAppConfig } from '@/hooks/useAppConfig'
 import { Sidebar } from '@/components/Sidebar'
 import { MainPanel } from '@/components/MainPanel'
@@ -12,7 +12,14 @@ import type { ConnectionStatus, Server, ServerGroup } from '@/types'
 
 function App() {
   const { t } = useI18n()
-  const { config, updateConfig, isLoading: configLoading, error: configError } = useAppConfig()
+  const {
+    config,
+    updateConfig,
+    isLoading: configLoading,
+    error: configError,
+    isSaving,
+    saveError,
+  } = useAppConfig()
   const servers = config?.servers ?? []
   const groups = config?.groups ?? []
   const updateServers = useCallback((update: (servers: Server[]) => Server[]) => {
@@ -270,6 +277,22 @@ function App() {
           ))
         )}
       </main>
+
+      {(isSaving || saveError) && (
+        <div
+          className={cn(
+            'fixed right-4 bottom-4 z-50 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg',
+            saveError
+              ? 'border-destructive/30 bg-destructive/10 text-destructive'
+              : 'border-border bg-background/95 text-muted-foreground backdrop-blur',
+          )}
+          role={saveError ? 'alert' : 'status'}
+          aria-live="polite"
+        >
+          {saveError ? <CircleAlert className="h-3.5 w-3.5" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {saveError ? t('configurationSaveFailed') : t('savingConfiguration')}
+        </div>
+      )}
 
       <ServerFormModal
         open={modalOpen}

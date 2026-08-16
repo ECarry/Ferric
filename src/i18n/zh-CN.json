@@ -5,6 +5,8 @@
   "noSearchResults": "未找到匹配的服务器",
   "loadingConfiguration": "正在加载配置...",
   "configurationLoadFailed": "配置加载失败",
+  "savingConfiguration": "正在保存配置...",
+  "configurationSaveFailed": "配置保存失败",
   "retry": "重试",
   "groups": "分组",
   "closeSidebar": "关闭侧边栏",
