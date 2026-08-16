@@ -20,6 +20,25 @@ export function useAppConfig() {
   const { mutateAsync } = saveMutation
   const initialized = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const pendingConfig = useRef<AppConfig | undefined>(undefined)
+  const saving = useRef(false)
+  const flushSaveRef = useRef<() => void>(() => {})
+  const flushSave = useCallback(() => {
+    if (saving.current || !pendingConfig.current) return
+    const config = pendingConfig.current
+    pendingConfig.current = undefined
+    saving.current = true
+    void mutateAsync(config).finally(() => {
+      saving.current = false
+      if (pendingConfig.current) {
+        saveTimer.current = setTimeout(() => flushSaveRef.current(), 500)
+      }
+    })
+  }, [mutateAsync])
+
+  useEffect(() => {
+    flushSaveRef.current = flushSave
+  }, [flushSave])
 
   useEffect(() => {
     if (!query.data) return
@@ -27,12 +46,18 @@ export function useAppConfig() {
       initialized.current = true
       return
     }
+    pendingConfig.current = query.data
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      void mutateAsync(query.data)
-    }, 500)
+    saveTimer.current = setTimeout(flushSave, 500)
     return () => clearTimeout(saveTimer.current)
-  }, [mutateAsync, query.data])
+  }, [flushSave, query.data])
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(saveTimer.current)
+      flushSave()
+    }
+  }, [flushSave])
 
   const updateConfig = useCallback((update: ConfigUpdater) => {
     queryClient.setQueryData<AppConfig>(appConfigQueryKey, (current) =>
