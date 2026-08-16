@@ -14,6 +14,7 @@ export interface SshConnectConfig {
   password?: string
   keyPath?: string
   keyPassphrase?: string
+  serverId?: string
   acceptNewHostKey?: boolean
   cols: number
   rows: number

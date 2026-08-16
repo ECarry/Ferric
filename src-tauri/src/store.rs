@@ -35,10 +35,14 @@ pub struct Server {
     pub auth_type: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub has_password: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_passphrase: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub has_key_passphrase: bool,
     pub group_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
@@ -103,6 +107,15 @@ fn read_secret(account: &str) -> Option<String> {
         .and_then(|entry| entry.get_password().ok())
 }
 
+pub(crate) fn read_server_secret(server_id: &str, passphrase: bool) -> Option<String> {
+    let account = if passphrase {
+        passphrase_account(server_id)
+    } else {
+        server_id.to_string()
+    };
+    read_secret(&account)
+}
+
 /// Store a secret in the OS keychain.
 fn write_secret(account: &str, secret: &str) -> Result<(), AppError> {
     keyring::Entry::new(KEYCHAIN_SERVICE, account)
@@ -145,11 +158,11 @@ pub fn load_config(app: AppHandle) -> Result<Config, AppError> {
     };
 
     for server in config.servers.iter_mut() {
-        if server.auth_type == "password" {
-            server.password = read_secret(&server.id);
-        } else if server.auth_type == "key" {
-            server.key_passphrase = read_secret(&passphrase_account(&server.id));
-        }
+        server.password = None;
+        server.key_passphrase = None;
+        server.has_password = server.auth_type == "password" && read_secret(&server.id).is_some();
+        server.has_key_passphrase =
+            server.auth_type == "key" && read_secret(&passphrase_account(&server.id)).is_some();
     }
 
     Ok(config)

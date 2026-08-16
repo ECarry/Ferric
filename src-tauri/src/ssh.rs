@@ -70,6 +70,8 @@ pub struct ConnectConfig {
     pub key_path: Option<String>,
     pub key_passphrase: Option<String>,
     #[serde(default)]
+    pub server_id: Option<String>,
+    #[serde(default)]
     pub cols: Option<u32>,
     #[serde(default)]
     pub rows: Option<u32>,
@@ -215,7 +217,12 @@ pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Hand
                     .key_path
                     .as_ref()
                     .ok_or_else(|| AppError::new("errSshNoKeyPath"))?;
-                let key_pair = load_secret_key(path, cfg.key_passphrase.as_deref())
+                let key_passphrase = cfg.key_passphrase.clone().or_else(|| {
+                    cfg.server_id
+                        .as_deref()
+                        .and_then(|id| crate::store::read_server_secret(id, true))
+                });
+                let key_pair = load_secret_key(path, key_passphrase.as_deref())
                     .map_err(|e| AppError::new("errSshKeyLoad").detail(e))?;
                 let hash = session.best_supported_rsa_hash().await?.flatten();
                 session
@@ -228,12 +235,14 @@ pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Hand
                     .success()
             }
             _ => {
-                let password = cfg
-                    .password
-                    .as_ref()
-                    .ok_or_else(|| AppError::new("errSshNoPassword"))?;
+                let password = cfg.password.clone().or_else(|| {
+                    cfg.server_id
+                        .as_deref()
+                        .and_then(|id| crate::store::read_server_secret(id, false))
+                });
+                let password = password.ok_or_else(|| AppError::new("errSshNoPassword"))?;
                 session
-                    .authenticate_password(&cfg.username, password)
+                    .authenticate_password(&cfg.username, &password)
                     .await
                     .map_err(|e| AppError::new("errSshAuthProcess").detail(e))?
                     .success()

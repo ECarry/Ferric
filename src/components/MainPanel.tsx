@@ -68,6 +68,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       password: server.password ?? sessionPassword ?? undefined,
       keyPath: server.keyPath,
       keyPassphrase: server.keyPassphrase,
+      serverId: server.id,
       cols: 80,
       rows: 24,
     }
@@ -195,7 +196,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   if (!server) return <WelcomeScreen />
 
   const connected = status === 'connected' && sessionId
-  const passwordRequired = (server.protocol ?? 'ssh') === 'ssh' && server.authType === 'password' && (!server.password && !sessionPassword || passwordPrompt)
+  const passwordRequired = (server.protocol ?? 'ssh') === 'ssh' && server.authType === 'password' && (!server.password && !server.hasPassword && !sessionPassword || passwordPrompt)
   const meta = { label: t(status === 'error' ? 'connectionFailed' : status), color: statusColor[status] }
 
   return (

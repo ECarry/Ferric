@@ -13,11 +13,13 @@ export interface Server {
   parity?: 'none' | 'odd' | 'even'
   stopBits?: 1 | 2
   authType: AuthType
-  /** Only for UI mock — never store plaintext in a real app */
+  /** Only populated for a one-time password prompt; saved passwords stay in the OS keychain. */
   password?: string
+  hasPassword?: boolean
   keyPath?: string
   /** Optional passphrase protecting the private key. */
   keyPassphrase?: string
+  hasKeyPassphrase?: boolean
   groupId: string
   color?: string
   lastConnected?: string
