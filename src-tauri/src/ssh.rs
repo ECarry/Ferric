@@ -21,6 +21,10 @@ pub fn set_known_hosts_path(path: PathBuf) {
     let _ = KNOWN_HOSTS_PATH.set(path);
 }
 
+fn parse_known_hosts(raw: &str) -> Option<std::collections::BTreeMap<String, String>> {
+    serde_json::from_str(raw).ok()
+}
+
 /// Read the known_hosts JSON file: `{ "host:port": "SHA256:..." }`.
 fn load_known_hosts() -> std::collections::BTreeMap<String, String> {
     let Some(path) = KNOWN_HOSTS_PATH.get() else {
@@ -29,11 +33,12 @@ fn load_known_hosts() -> std::collections::BTreeMap<String, String> {
     let backup_path = path.with_extension("json.bak");
     for candidate in [path, &backup_path] {
         match std::fs::read_to_string(candidate) {
-            Ok(raw) => match serde_json::from_str(&raw) {
-                Ok(hosts) => return hosts,
-                Err(error) => {
-                    log::warn!("Failed to parse known hosts file {:?}: {error}", candidate)
-                }
+            Ok(raw) => match parse_known_hosts(&raw) {
+                Some(hosts) => return hosts,
+                None => log::warn!(
+                    "Failed to parse known hosts file {:?}: invalid JSON",
+                    candidate
+                ),
             },
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => log::warn!("Failed to read known hosts file {:?}: {error}", candidate),
@@ -433,4 +438,24 @@ pub fn ssh_disconnect(
     }
     drop(sessions);
     protocol_state.disconnect(&id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_known_hosts;
+
+    #[test]
+    fn parses_known_hosts_entries() {
+        let hosts = parse_known_hosts(r#"{"example.com:22":"SHA256:fingerprint"}"#)
+            .expect("valid known hosts JSON");
+        assert_eq!(
+            hosts.get("example.com:22"),
+            Some(&"SHA256:fingerprint".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_known_hosts_json() {
+        assert!(parse_known_hosts("not json").is_none());
+    }
 }
