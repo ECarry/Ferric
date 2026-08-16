@@ -7,6 +7,7 @@
   "configurationLoadFailed": "配置加载失败",
   "savingConfiguration": "正在保存配置...",
   "configurationSaveFailed": "配置保存失败",
+  "loadingTerminal": "正在加载终端...",
   "retry": "重试",
   "groups": "分组",
   "closeSidebar": "关闭侧边栏",

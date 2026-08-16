@@ -16,7 +16,7 @@ import {
   type SshConnectConfig,
 } from '@/lib/ssh'
 import { sftpConnect, sftpDisconnect } from '@/lib/sftp'
-import { TerminalWorkspace } from './TerminalWorkspace'
+const TerminalWorkspace = lazy(() => import('./TerminalWorkspace').then((module) => ({ default: module.TerminalWorkspace })))
 
 const FileBrowser = lazy(() => import('./FileBrowser').then((module) => ({ default: module.FileBrowser })))
 const DockerView = lazy(() => import('./docker/DockerView').then((module) => ({ default: module.DockerView })))
@@ -241,14 +241,23 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           onConnect={connect}
         />
       ) : server.protocol === 'serial' ? (
-        <TerminalWorkspace
-          key={sessionId}
-          initialSessionId={sessionId}
-          sshConfig={sshConfig!}
-          sftpReady={false}
-          active={active}
-          fileBrowser={() => null}
-        />
+        <Suspense
+          fallback={
+            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {t('loadingTerminal')}
+            </div>
+          }
+        >
+          <TerminalWorkspace
+            key={sessionId}
+            initialSessionId={sessionId}
+            sshConfig={sshConfig!}
+            sftpReady={false}
+            active={active}
+            fileBrowser={() => null}
+          />
+        </Suspense>
       ) : (
         <Tabs
           value={tab}
@@ -294,7 +303,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
             fallback={
               <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t('loadingContainers')}
+                {t('loadingTerminal')}
               </div>
             }
           >
