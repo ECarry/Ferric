@@ -23,11 +23,13 @@ interface TerminalWorkspaceProps {
   initialSessionId: string
   sshConfig: SshConnectConfig
   sftpReady: boolean
+  sftpError?: string | null
+  onRetrySftp?: () => void
   fileBrowser: (terminalSessionId: string) => ReactNode
   active?: boolean
 }
 
-export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, fileBrowser, active = true }: TerminalWorkspaceProps) {
+export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, sftpError, onRetrySftp, fileBrowser, active = true }: TerminalWorkspaceProps) {
   const { t } = useI18n()
   const initialWindow = {
     id: `terminal-${initialSessionId}`,
@@ -309,7 +311,19 @@ export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, file
             <div className="min-w-0"><h2 className="truncate text-sm font-semibold">{t('files')}</h2><p className="text-[11px] text-muted-foreground">{t('filePanelHint')}</p></div>
             <Button variant="ghost" size="icon-sm" className="ml-auto shrink-0" title={t('closeFilePanel')} aria-label={t('closeFilePanel')} onClick={() => setFilePanelOpen(false)}><PanelBottomClose className="h-4 w-4" /></Button>
           </header>
-          {sftpReady && activeWindow ? <div className="min-h-0 flex-1">{fileBrowser(activeWindow.sessionId)}</div> : <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{t('establishingSftp')}</div>}
+          {sftpReady && activeWindow ? (
+            <div className="min-h-0 flex-1">{fileBrowser(activeWindow.sessionId)}</div>
+          ) : sftpError ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center text-sm text-destructive" role="alert">
+              <span>{sftpError}</span>
+              <Button variant="outline" size="sm" onClick={onRetrySftp}>{t('retry')}</Button>
+            </div>
+          ) : (
+            <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t('establishingSftp')}
+            </div>
+          )}
         </aside>
       ) : (
         <Button variant="outline" size="sm" className="absolute bottom-4 right-4 z-10 bg-background/95 shadow-lg backdrop-blur" onClick={() => setFilePanelOpen(true)}><PanelBottomOpen className="h-4 w-4" />{t('showFiles')}</Button>

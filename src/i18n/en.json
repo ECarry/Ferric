@@ -103,6 +103,7 @@
   "sendPathToTerminal": "Send path to terminal",
   "containers": "Containers",
   "establishingSftp": "Establishing SFTP session...",
+  "sftpConnectionFailed": "SFTP connection failed.",
   "notConnected": "Not connected yet",
   "connectPrompt": "Connect to this server to get started.",
   "passwordPrompt": "Password required",

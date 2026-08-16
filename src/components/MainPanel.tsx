@@ -36,6 +36,8 @@ const statusColor: Record<ConnectionStatus, string> = {
   disconnected: 'bg-muted-foreground', connecting: 'bg-yellow-500', connected: 'bg-green-500', error: 'bg-destructive',
 }
 
+type SftpStatus = 'idle' | 'connecting' | 'connected' | 'error'
+
 export function MainPanel({ server, onEdit, onStatusChange, active = true }: MainPanelProps) {
   const { t } = useI18n()
   const [tab, setTab] = useState('terminal')
@@ -43,6 +45,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [sftpId, setSftpId] = useState<string | null>(null)
+  const [sftpStatus, setSftpStatus] = useState<SftpStatus>('idle')
+  const [sftpError, setSftpError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hostKeyFingerprint, setHostKeyFingerprint] = useState<string | null>(null)
   const [sessionPassword, setSessionPassword] = useState<string | null>(null)
@@ -82,6 +86,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     sftpRef.current = null
     setSessionId(null)
     setSftpId(null)
+    setSftpStatus('idle')
+    setSftpError(null)
     setStatus('disconnected')
     setError(null)
     setHostKeyFingerprint(null)
@@ -130,6 +136,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       if (sftpId) void sftpDisconnect(sftpId)
       setSessionId(null)
       setSftpId(null)
+      setSftpStatus('idle')
+      setSftpError(null)
       setSessionPassword(null)
       setStatus('disconnected')
     }).then((fn) => {
@@ -144,6 +152,27 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       unlisten?.()
     }
   }, [sessionId])
+
+  const openSftp = useCallback((config: SshConnectConfig, generation: number) => {
+    setSftpStatus('connecting')
+    setSftpError(null)
+    void sftpConnect(config)
+      .then((sid) => {
+        if (connectionGenerationRef.current !== generation) {
+          void sftpDisconnect(sid)
+          return
+        }
+        sftpRef.current = sid
+        setSftpId(sid)
+        setSftpStatus('connected')
+      })
+      .catch((e) => {
+        if (connectionGenerationRef.current === generation) {
+          setSftpStatus('error')
+          setSftpError(formatAppError(e, t))
+        }
+      })
+  }, [t])
 
   const connect = useCallback(async (passwordOverride?: string, trustHostKey = false) => {
     if (!sshConfig) return
@@ -168,22 +197,8 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       if (passwordOverride !== undefined) setSessionPassword(passwordOverride)
       setPasswordPrompt(false)
       setHostKeyFingerprint(null)
-      // Open a separate SFTP session (best-effort; failure only disables SFTP).
       if (config.protocol !== 'ssh') return
-      sftpConnect(config)
-        .then((sid) => {
-          if (connectionGenerationRef.current !== generation) {
-            void sftpDisconnect(sid)
-            return
-          }
-          sftpRef.current = sid
-          setSftpId(sid)
-        })
-        .catch((e) => {
-          if (connectionGenerationRef.current === generation) {
-            console.error('SFTP 连接失败', e)
-          }
-        })
+      openSftp(config, generation)
     } catch (e) {
       if (connectionGenerationRef.current !== generation) return
       setStatus('error')
@@ -196,7 +211,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
         setPasswordPrompt(true)
       }
     }
-  }, [sshConfig, t])
+  }, [openSftp, sshConfig, t])
 
   if (!server) return <WelcomeScreen />
 
@@ -327,7 +342,9 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
               key={sessionId}
               initialSessionId={sessionId}
               sshConfig={sshConfig!}
-              sftpReady={Boolean(sftpId)}
+              sftpReady={sftpStatus === 'connected' && Boolean(sftpId)}
+              sftpError={sftpError}
+              onRetrySftp={() => openSftp(sshConfig!, connectionGenerationRef.current)}
               active={active && tab === 'terminal'}
               fileBrowser={(terminalSessionId) => sftpId ? (
                 <FileBrowser
@@ -340,8 +357,15 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
           </TabsContent>
           {mountedTabs.has('sftp') && (
             <TabsContent value="sftp" keepMounted className="min-h-0">
-              {sftpId ? (
+              {sftpStatus === 'connected' && sftpId ? (
                 <FileBrowser key={sftpId} sessionId={sftpId} />
+              ) : sftpStatus === 'error' ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-sm text-destructive" role="alert">
+                  <span>{sftpError ?? t('sftpConnectionFailed')}</span>
+                  <Button variant="outline" size="sm" onClick={() => openSftp(sshConfig!, connectionGenerationRef.current)}>
+                    {t('retry')}
+                  </Button>
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />

@@ -103,6 +103,7 @@
   "sendPathToTerminal": "发送路径到终端",
   "containers": "容器",
   "establishingSftp": "正在建立 SFTP 会话...",
+  "sftpConnectionFailed": "SFTP 连接失败。",
   "notConnected": "尚未建立连接",
   "connectPrompt": "点击下方按钮连接到服务器",
   "passwordPrompt": "需要输入密码",
