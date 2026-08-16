@@ -95,6 +95,36 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     setPasswordPrompt(false)
   }, [])
 
+  const connectionConfigKey = useMemo(() => {
+    if (!server) return ''
+    return [
+      server.protocol,
+      server.host,
+      server.port,
+      server.username,
+      server.authType,
+      server.keyPath,
+      server.baudRate,
+      server.dataBits,
+      server.parity,
+      server.stopBits,
+      server.password ? 'password-set' : 'password-empty',
+      server.keyPassphrase ? 'passphrase-set' : 'passphrase-empty',
+    ].join('\u0000')
+  }, [server])
+  const previousConnectionConfigKey = useRef(connectionConfigKey)
+
+  useEffect(() => {
+    if (
+      previousConnectionConfigKey.current !== connectionConfigKey &&
+      (Boolean(sessionRef.current) || status === 'connecting')
+    ) {
+      reset()
+      setError(t('connectionConfigChanged'))
+    }
+    previousConnectionConfigKey.current = connectionConfigKey
+  }, [connectionConfigKey, reset, status, t])
+
   // Disconnect only when this panel unmounts (server closed / deleted).
   // Switching servers no longer tears down the connection because each
   // server gets its own persistent MainPanel instance.

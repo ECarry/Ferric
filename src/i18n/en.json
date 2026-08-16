@@ -7,6 +7,7 @@
   "configurationLoadFailed": "Failed to load configuration.",
   "savingConfiguration": "Saving configuration...",
   "configurationSaveFailed": "Failed to save configuration.",
+  "connectionConfigChanged": "Connection settings changed. Please reconnect.",
   "loadingTerminal": "Loading terminal...",
   "retry": "Try again",
   "groups": "Groups",
