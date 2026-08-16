@@ -26,10 +26,18 @@ fn load_known_hosts() -> std::collections::BTreeMap<String, String> {
     let Some(path) = KNOWN_HOSTS_PATH.get() else {
         return std::collections::BTreeMap::new();
     };
-    match std::fs::read_to_string(path) {
-        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
-        Err(_) => std::collections::BTreeMap::new(),
+    let backup_path = path.with_extension("json.bak");
+    for candidate in [path, &backup_path] {
+        match std::fs::read_to_string(candidate) {
+            Ok(raw) => match serde_json::from_str(&raw) {
+                Ok(hosts) => return hosts,
+                Err(error) => log::warn!("Failed to parse known hosts file {:?}: {error}", candidate),
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => log::warn!("Failed to read known hosts file {:?}: {error}", candidate),
+        }
     }
+    std::collections::BTreeMap::new()
 }
 
 /// Persist the known_hosts map to disk.
