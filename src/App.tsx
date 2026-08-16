@@ -19,6 +19,7 @@ function App() {
     error: configError,
     isSaving,
     saveError,
+    retrySave,
   } = useAppConfig()
   const servers = config?.servers ?? []
   const groups = config?.groups ?? []
@@ -290,7 +291,12 @@ function App() {
           aria-live="polite"
         >
           {saveError ? <CircleAlert className="h-3.5 w-3.5" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {saveError ? t('configurationSaveFailed') : t('savingConfiguration')}
+          <span>{saveError ? t('configurationSaveFailed') : t('savingConfiguration')}</span>
+          {saveError && (
+            <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={retrySave}>
+              {t('retry')}
+            </Button>
+          )}
         </div>
       )}
 

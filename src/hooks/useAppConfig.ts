@@ -28,12 +28,18 @@ export function useAppConfig() {
     const config = pendingConfig.current
     pendingConfig.current = undefined
     saving.current = true
-    void mutateAsync(config).catch(() => undefined).finally(() => {
-      saving.current = false
-      if (pendingConfig.current) {
-        saveTimer.current = setTimeout(() => flushSaveRef.current(), 500)
-      }
-    })
+    let failed = false
+    void mutateAsync(config)
+      .catch(() => {
+        failed = true
+        if (!pendingConfig.current) pendingConfig.current = config
+      })
+      .finally(() => {
+        saving.current = false
+        if (!failed && pendingConfig.current) {
+          saveTimer.current = setTimeout(() => flushSaveRef.current(), 500)
+        }
+      })
   }, [mutateAsync])
 
   useEffect(() => {
@@ -59,6 +65,11 @@ export function useAppConfig() {
     }
   }, [flushSave])
 
+  const retrySave = useCallback(() => {
+    clearTimeout(saveTimer.current)
+    flushSave()
+  }, [flushSave])
+
   const updateConfig = useCallback((update: ConfigUpdater) => {
     queryClient.setQueryData<AppConfig>(appConfigQueryKey, (current) =>
       update(current ?? { servers: [], groups: [] }),
@@ -71,5 +82,6 @@ export function useAppConfig() {
     updateConfig,
     isSaving: saveMutation.isPending,
     saveError: saveMutation.error,
+    retrySave,
   }
 }
