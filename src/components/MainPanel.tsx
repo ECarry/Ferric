@@ -125,7 +125,12 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     let unlisten: (() => void) | undefined
     onSshClosed(sessionId, () => {
       sessionRef.current = null
+      const sftpId = sftpRef.current
+      sftpRef.current = null
+      if (sftpId) void sftpDisconnect(sftpId)
       setSessionId(null)
+      setSftpId(null)
+      setSessionPassword(null)
       setStatus('disconnected')
     }).then((fn) => {
       if (disposed) {
