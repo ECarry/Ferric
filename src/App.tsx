@@ -21,8 +21,8 @@ function App() {
     saveError,
     retrySave,
   } = useAppConfig()
-  const servers = config?.servers ?? []
-  const groups = config?.groups ?? []
+  const servers = useMemo(() => config?.servers ?? [], [config?.servers])
+  const groups = useMemo(() => config?.groups ?? [], [config?.groups])
   const updateServers = useCallback((update: (servers: Server[]) => Server[]) => {
     updateConfig((current) => ({ ...current, servers: update(current.servers) }))
   }, [updateConfig])
@@ -40,7 +40,15 @@ function App() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Server | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-
+  const effectiveActiveId = useMemo(() => {
+    if (activeId && servers.some((server) => server.id === activeId)) return activeId
+    return servers[0]?.id
+  }, [activeId, servers])
+  const effectiveOpenIds = useMemo(() => {
+    const next = openIds.filter((id) => servers.some((server) => server.id === id))
+    if (effectiveActiveId && !next.includes(effectiveActiveId)) next.push(effectiveActiveId)
+    return next
+  }, [effectiveActiveId, openIds, servers])
 
   const handleStatusChange = useCallback(
     (id: string, status: ConnectionStatus) => {
@@ -53,19 +61,19 @@ function App() {
     () =>
       new Set(
         Object.entries(statuses)
-          .filter(([, s]) => s === 'connected')
+          .filter(([id, s]) => s === 'connected' && servers.some((server) => server.id === id))
           .map(([id]) => id),
       ),
-    [statuses],
+    [servers, statuses],
   )
 
   // Resolve open ids to live server objects, preserving open order.
   const openServers = useMemo(
     () =>
-      openIds
+      effectiveOpenIds
         .map((id) => config?.servers.find((s) => s.id === id))
         .filter((s): s is Server => Boolean(s)),
-    [config?.servers, openIds],
+    [config?.servers, effectiveOpenIds],
   )
 
   const selectServer = (server: Server) => {
@@ -220,7 +228,7 @@ function App() {
         onCloseMobile={() => setSidebarOpen(false)}
         groups={groups}
         servers={servers}
-        activeServerId={activeId}
+        activeServerId={effectiveActiveId}
         connectedIds={connectedIds}
         onSelect={(server) => {
           selectServer(server)
@@ -265,14 +273,14 @@ function App() {
               key={s.id}
               className={cn(
                 'absolute inset-0',
-                s.id === activeId ? 'block' : 'hidden',
+                s.id === effectiveActiveId ? 'block' : 'hidden',
               )}
             >
               <MainPanel
                 server={s}
                 onEdit={() => openEdit(s)}
                 onStatusChange={handleStatusChange}
-                active={s.id === activeId}
+                active={s.id === effectiveActiveId}
               />
             </div>
           ))
