@@ -1,0 +1,45 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test -- --run
+      - name: Build
+        run: npm run build
+
+  rust:
+    name: Rust checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libudev-dev
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Check
+        working-directory: src-tauri
+        run: cargo check
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test
