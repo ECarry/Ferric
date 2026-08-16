@@ -175,6 +175,8 @@
   "errSshAuthTimeout": "Authentication to {{host}} timed out (30s)",
   "errSshHostKeyChanged": "Host key for {{host}}:{{port}} has changed! This may indicate a man-in-the-middle attack.",
   "errSshHostKeyUnknown": "Unknown host key for {{host}}:{{port}}. Please verify the fingerprint before trusting.",
+  "hostKeyPrompt": "This host key is not trusted yet. Verify the fingerprint before continuing.",
+  "trustHostKey": "Trust host key and connect",
   "errSshNoKeyPath": "No private key path provided",
   "errSshKeyLoad": "Failed to load private key (file missing, unsupported format or wrong passphrase)",
   "errSshAuthProcess": "Authentication process error",

@@ -73,6 +73,9 @@ pub struct ConnectConfig {
     pub cols: Option<u32>,
     #[serde(default)]
     pub rows: Option<u32>,
+    /// Trust and persist an unknown host key for this connection attempt.
+    #[serde(default)]
+    pub accept_new_host_key: bool,
 }
 
 /// Payload emitted to the frontend as the shell produces output.
@@ -105,6 +108,8 @@ pub struct SshManager {
 pub(crate) struct Client {
     host: String,
     port: u16,
+    accept_new_host_key: bool,
+    unknown_host_key: Arc<Mutex<Option<String>>>,
 }
 
 impl Client {
@@ -145,14 +150,19 @@ impl client::Handler for Client {
                 );
                 Ok(false)
             }
-            None => {
-                // First connection — trust and store (TOFU).
+            None if self.accept_new_host_key => {
                 hosts.insert(key, fp);
                 if let Err(error) = save_known_hosts(&hosts) {
                     log::error!("Failed to persist known host: {error}");
                     return Ok(false);
                 }
                 Ok(true)
+            }
+            None => {
+                if let Ok(mut unknown_host_key) = self.unknown_host_key.lock() {
+                    *unknown_host_key = Some(fp);
+                }
+                Ok(false)
             }
         }
     }
@@ -165,24 +175,38 @@ const SSH_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 pub(crate) async fn connect_and_auth(cfg: &ConnectConfig) -> anyhow::Result<Handle<Client>> {
     let host = cfg.host.trim();
     let config = Arc::new(client::Config::default());
+    let unknown_host_key = Arc::new(Mutex::new(None));
     let client = Client {
         host: host.to_string(),
         port: cfg.port,
+        accept_new_host_key: cfg.accept_new_host_key,
+        unknown_host_key: Arc::clone(&unknown_host_key),
     };
     let connect_fut = client::connect(config, (host, cfg.port), client);
-    let mut session = tokio::time::timeout(SSH_CONNECT_TIMEOUT, connect_fut)
-        .await
-        .map_err(|_| {
-            AppError::new("errSshConnectTimeout")
+    let mut session = match tokio::time::timeout(SSH_CONNECT_TIMEOUT, connect_fut).await {
+        Err(_) => {
+            return Err(AppError::new("errSshConnectTimeout")
                 .param("host", &cfg.host)
                 .param("port", cfg.port)
-        })?
-        .map_err(|e| {
-            AppError::new("errSshConnect")
+                .into())
+        }
+        Ok(Ok(session)) => session,
+        Ok(Err(error)) => {
+            let fingerprint = unknown_host_key.lock().ok().and_then(|key| key.clone());
+            if let Some(fingerprint) = fingerprint {
+                return Err(AppError::new("errSshHostKeyUnknown")
+                    .param("host", &cfg.host)
+                    .param("port", cfg.port)
+                    .param("fingerprint", fingerprint)
+                    .into());
+            }
+            return Err(AppError::new("errSshConnect")
                 .param("host", &cfg.host)
                 .param("port", cfg.port)
-                .detail(e)
-        })?;
+                .detail(error)
+                .into());
+        }
+    };
 
     let auth_fut = async {
         let authenticated = match cfg.auth_type.as_str() {

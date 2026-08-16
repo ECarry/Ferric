@@ -44,6 +44,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [sftpId, setSftpId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [hostKeyFingerprint, setHostKeyFingerprint] = useState<string | null>(null)
   const [sessionPassword, setSessionPassword] = useState<string | null>(null)
   const [passwordPrompt, setPasswordPrompt] = useState(false)
   const sessionRef = useRef<string | null>(null)
@@ -82,6 +83,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     setSftpId(null)
     setStatus('disconnected')
     setError(null)
+    setHostKeyFingerprint(null)
     setSessionPassword(null)
     setPasswordPrompt(false)
   }, [])
@@ -137,13 +139,15 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
     }
   }, [sessionId])
 
-  const connect = useCallback(async (passwordOverride?: string) => {
+  const connect = useCallback(async (passwordOverride?: string, trustHostKey = false) => {
     if (!sshConfig) return
     const generation = connectionGenerationRef.current + 1
     connectionGenerationRef.current = generation
-    const config = passwordOverride === undefined
-      ? sshConfig
-      : { ...sshConfig, password: passwordOverride }
+    const config = {
+      ...sshConfig,
+      ...(passwordOverride === undefined ? {} : { password: passwordOverride }),
+      ...(trustHostKey ? { acceptNewHostKey: true } : {}),
+    }
     setStatus('connecting')
     setError(null)
     try {
@@ -157,6 +161,7 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       setStatus('connected')
       if (passwordOverride !== undefined) setSessionPassword(passwordOverride)
       setPasswordPrompt(false)
+      setHostKeyFingerprint(null)
       // Open a separate SFTP session (best-effort; failure only disables SFTP).
       if (config.protocol !== 'ssh') return
       sftpConnect(config)
@@ -177,7 +182,9 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
       if (connectionGenerationRef.current !== generation) return
       setStatus('error')
       setError(formatAppError(e, t))
-      if (isAppError(e) && e.code === 'errSshNoPassword') {
+      if (isAppError(e) && e.code === 'errSshHostKeyUnknown') {
+        setHostKeyFingerprint(String(e.params?.fingerprint ?? ''))
+      } else if (isAppError(e) && e.code === 'errSshNoPassword') {
         setPasswordPrompt(true)
       } else if (passwordOverride !== undefined) {
         setPasswordPrompt(true)
@@ -237,8 +244,10 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
         <DisconnectedState
           status={status}
           error={error}
+          hostKeyFingerprint={hostKeyFingerprint}
           passwordRequired={passwordRequired}
           onConnect={connect}
+          onTrustHostKey={() => void connect(undefined, true)}
         />
       ) : server.protocol === 'serial' ? (
         <Suspense
@@ -370,13 +379,17 @@ export function MainPanel({ server, onEdit, onStatusChange, active = true }: Mai
 function DisconnectedState({
   status,
   error,
+  hostKeyFingerprint,
   passwordRequired,
   onConnect,
+  onTrustHostKey,
 }: {
   status: ConnectionStatus
   error: string | null
+  hostKeyFingerprint: string | null
   passwordRequired: boolean
   onConnect: (password?: string) => void
+  onTrustHostKey: () => void
 }) {
   const { t } = useI18n()
   const [password, setPassword] = useState('')
@@ -402,7 +415,15 @@ function DisconnectedState({
           </p>
         )}
       </div>
-      {passwordRequired ? (
+      {hostKeyFingerprint ? (
+        <div className="w-full max-w-md space-y-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4 text-left">
+          <p className="text-sm font-medium">{t('hostKeyPrompt')}</p>
+          <code className="block break-all rounded bg-background/70 p-2 font-mono text-xs">{hostKeyFingerprint}</code>
+          <Button type="button" className="w-full" onClick={onTrustHostKey} disabled={status === 'connecting'}>
+            {status === 'connecting' ? t('connecting') : t('trustHostKey')}
+          </Button>
+        </div>
+      ) : passwordRequired ? (
         <form onSubmit={submitPassword} className="w-full max-w-sm space-y-3 text-left">
           <div className="rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs">
             <p className="text-muted-foreground">$ {t('passwordPrompt')}</p>

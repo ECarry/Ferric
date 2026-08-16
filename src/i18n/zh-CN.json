@@ -175,6 +175,8 @@
   "errSshAuthTimeout": "认证 {{host}} 超时（30秒）",
   "errSshHostKeyChanged": "{{host}}:{{port}} 的主机密钥已变更！这可能意味着中间人攻击。",
   "errSshHostKeyUnknown": "{{host}}:{{port}} 的主机密钥未知，请在信任前核实指纹。",
+  "hostKeyPrompt": "此主机密钥尚未被信任，请核实指纹后再继续。",
+  "trustHostKey": "信任主机密钥并连接",
   "errSshNoKeyPath": "未提供私钥路径",
   "errSshKeyLoad": "私钥加载失败（文件不存在、格式不支持或口令不正确）",
   "errSshAuthProcess": "认证过程出错",
