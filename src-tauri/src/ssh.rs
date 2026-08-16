@@ -31,7 +31,9 @@ fn load_known_hosts() -> std::collections::BTreeMap<String, String> {
         match std::fs::read_to_string(candidate) {
             Ok(raw) => match serde_json::from_str(&raw) {
                 Ok(hosts) => return hosts,
-                Err(error) => log::warn!("Failed to parse known hosts file {:?}: {error}", candidate),
+                Err(error) => {
+                    log::warn!("Failed to parse known hosts file {:?}: {error}", candidate)
+                }
             },
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => log::warn!("Failed to read known hosts file {:?}: {error}", candidate),

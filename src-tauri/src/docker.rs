@@ -248,7 +248,9 @@ fn parse_containers(
                 status: row.status,
                 names: row.names,
                 networks: row.networks,
-                container_ip: inspected_row.map(|item| inspect_ips(&item.networks)).unwrap_or_default(),
+                container_ip: inspected_row
+                    .map(|item| inspect_ips(&item.networks))
+                    .unwrap_or_default(),
                 ports: row.ports,
                 mounts: row.mounts,
                 running_for: row.running_for,

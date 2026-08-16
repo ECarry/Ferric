@@ -89,7 +89,10 @@ pub struct RemoteFile {
 
 /// Pull an `Arc<SftpSession>` out of the manager for a given id.
 fn session_for(state: &State<'_, SftpManager>, id: &str) -> Result<Arc<SftpSession>, AppError> {
-    let sessions = state.sessions.lock().map_err(|e| AppError::new("errUnknown").detail(e))?;
+    let sessions = state
+        .sessions
+        .lock()
+        .map_err(|e| AppError::new("errUnknown").detail(e))?;
     sessions
         .get(id)
         .map(|c| c.sftp.clone())
@@ -146,13 +149,17 @@ pub async fn sftp_connect(
         .map_err(|e| AppError::new("errSftpInit").detail(e))?;
 
     let id = uuid::Uuid::new_v4().to_string();
-    state.sessions.lock().map_err(|e| AppError::new("errUnknown").detail(e))?.insert(
-        id.clone(),
-        SftpConn {
-            _session: session,
-            sftp: Arc::new(sftp),
-        },
-    );
+    state
+        .sessions
+        .lock()
+        .map_err(|e| AppError::new("errUnknown").detail(e))?
+        .insert(
+            id.clone(),
+            SftpConn {
+                _session: session,
+                sftp: Arc::new(sftp),
+            },
+        );
 
     Ok(id)
 }
@@ -161,7 +168,9 @@ pub async fn sftp_connect(
 #[tauri::command]
 pub async fn sftp_home(state: State<'_, SftpManager>, id: String) -> Result<String, AppError> {
     let sftp = session_for(&state, &id)?;
-    sftp.canonicalize(".").await.map_err(|e| AppError::new("errSftpCanonicalize").detail(e))
+    sftp.canonicalize(".")
+        .await
+        .map_err(|e| AppError::new("errSftpCanonicalize").detail(e))
 }
 
 /// List the contents of a remote directory.
@@ -172,7 +181,10 @@ pub async fn sftp_list(
     path: String,
 ) -> Result<Vec<RemoteFile>, AppError> {
     let sftp = session_for(&state, &id)?;
-    let entries = sftp.read_dir(path).await.map_err(|e| AppError::new("errSftpReadDir").detail(e))?;
+    let entries = sftp
+        .read_dir(path)
+        .await
+        .map_err(|e| AppError::new("errSftpReadDir").detail(e))?;
 
     let mut files: Vec<RemoteFile> = entries
         .map(|entry| {
@@ -234,7 +246,10 @@ pub async fn sftp_download(
         .ok()
         .and_then(|m| m.size)
         .unwrap_or(0);
-    let mut remote = sftp.open(&remote_path).await.map_err(|e| AppError::new("errSftpOpen").detail(e))?;
+    let mut remote = sftp
+        .open(&remote_path)
+        .await
+        .map_err(|e| AppError::new("errSftpOpen").detail(e))?;
     let mut local = tokio::fs::File::create(&local_path)
         .await
         .map_err(|e| AppError::new("errSftpLocalFile").detail(e))?;
@@ -285,7 +300,10 @@ pub async fn sftp_download(
         let _ = tokio::fs::remove_file(&local_path).await;
         return Ok(());
     }
-    local.flush().await.map_err(|e| AppError::new("errSftpFlush").detail(e))?;
+    local
+        .flush()
+        .await
+        .map_err(|e| AppError::new("errSftpFlush").detail(e))?;
     emit(transferred);
     Ok(())
 }
@@ -352,7 +370,10 @@ pub async fn sftp_download_dir(
     let mut stack: Vec<(String, PathBuf)> = vec![(remote_path.clone(), root.clone())];
 
     while let Some((rdir, ldir)) = stack.pop() {
-        let entries = sftp.read_dir(rdir.clone()).await.map_err(|e| AppError::new("errSftpReadDir").detail(e))?;
+        let entries = sftp
+            .read_dir(rdir.clone())
+            .await
+            .map_err(|e| AppError::new("errSftpReadDir").detail(e))?;
         for entry in entries {
             let name = entry.file_name();
             let rpath = if rdir.ends_with('/') {
@@ -396,7 +417,10 @@ pub async fn sftp_download_dir(
     let mut cancelled = false;
     emit(0);
     'files: for (rpath, lpath) in files {
-        let mut remote = sftp.open(rpath).await.map_err(|e| AppError::new("errSftpOpen").detail(e))?;
+        let mut remote = sftp
+            .open(rpath)
+            .await
+            .map_err(|e| AppError::new("errSftpOpen").detail(e))?;
         let mut local = tokio::fs::File::create(&lpath)
             .await
             .map_err(|e| AppError::new("errSftpLocalFile").detail(e))?;
@@ -406,9 +430,9 @@ pub async fn sftp_download_dir(
                 break 'files;
             }
             let n = tokio::time::timeout(SFTP_IO_TIMEOUT, remote.read(&mut buf))
-            .await
-            .map_err(|_| AppError::new("errSftpTransferTimeout"))?
-            .map_err(|e| AppError::new("errSftpRead").detail(e))?;
+                .await
+                .map_err(|_| AppError::new("errSftpTransferTimeout"))?
+                .map_err(|e| AppError::new("errSftpRead").detail(e))?;
             if n == 0 {
                 break;
             }
@@ -422,7 +446,10 @@ pub async fn sftp_download_dir(
                 emit(transferred);
             }
         }
-        local.flush().await.map_err(|e| AppError::new("errSftpFlush").detail(e))?;
+        local
+            .flush()
+            .await
+            .map_err(|e| AppError::new("errSftpFlush").detail(e))?;
     }
     if cancelled {
         // Remove the partially downloaded folder tree.
@@ -459,7 +486,10 @@ pub async fn sftp_upload(
     let mut local = tokio::fs::File::open(&local_path)
         .await
         .map_err(|e| AppError::new("errSftpLocalFile").detail(e))?;
-    let mut remote = sftp.create(&remote_path).await.map_err(|e| AppError::new("errSftpCreate").detail(e))?;
+    let mut remote = sftp
+        .create(&remote_path)
+        .await
+        .map_err(|e| AppError::new("errSftpCreate").detail(e))?;
 
     let emit = |transferred: u64| {
         let _ = app.emit(
@@ -506,8 +536,14 @@ pub async fn sftp_upload(
         let _ = sftp.remove_file(&remote_path).await;
         return Ok(());
     }
-    remote.flush().await.map_err(|e| AppError::new("errSftpFlush").detail(e))?;
-    remote.shutdown().await.map_err(|e| AppError::new("errSftpFlush").detail(e))?;
+    remote
+        .flush()
+        .await
+        .map_err(|e| AppError::new("errSftpFlush").detail(e))?;
+    remote
+        .shutdown()
+        .await
+        .map_err(|e| AppError::new("errSftpFlush").detail(e))?;
     emit(transferred);
     Ok(())
 }
@@ -572,11 +608,7 @@ pub async fn sftp_upload_dir(
                 dirs.push(rpath.clone());
                 stack.push((lpath, rpath));
             } else {
-                total += entry
-                    .metadata()
-                    .await
-                    .map(|m| m.len())
-                    .unwrap_or(0);
+                total += entry.metadata().await.map(|m| m.len()).unwrap_or(0);
                 files.push((lpath, rpath));
             }
         }
@@ -656,7 +688,10 @@ pub async fn sftp_upload_dir(
 /// Cancel one in-flight transfer by its independent transfer ID.
 #[tauri::command]
 pub fn sftp_cancel(state: State<'_, SftpManager>, transfer_id: String) -> Result<(), AppError> {
-    let cancels = state.cancels.lock().map_err(|e| AppError::new("errUnknown").detail(e))?;
+    let cancels = state
+        .cancels
+        .lock()
+        .map_err(|e| AppError::new("errUnknown").detail(e))?;
     if let Some(flag) = cancels.get(&transfer_id) {
         flag.store(true, Ordering::SeqCst);
     }
@@ -671,7 +706,9 @@ pub async fn sftp_mkdir(
     path: String,
 ) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
-    sftp.create_dir(path).await.map_err(|e| AppError::new("errSftpMkdir").detail(e))
+    sftp.create_dir(path)
+        .await
+        .map_err(|e| AppError::new("errSftpMkdir").detail(e))
 }
 
 /// Remove a file or (empty) directory.
@@ -684,9 +721,13 @@ pub async fn sftp_remove(
 ) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
     if is_dir {
-        sftp.remove_dir(path).await.map_err(|e| AppError::new("errSftpRemove").detail(e))
+        sftp.remove_dir(path)
+            .await
+            .map_err(|e| AppError::new("errSftpRemove").detail(e))
     } else {
-        sftp.remove_file(path).await.map_err(|e| AppError::new("errSftpRemove").detail(e))
+        sftp.remove_file(path)
+            .await
+            .map_err(|e| AppError::new("errSftpRemove").detail(e))
     }
 }
 
@@ -699,13 +740,19 @@ pub async fn sftp_rename(
     to: String,
 ) -> Result<(), AppError> {
     let sftp = session_for(&state, &id)?;
-    sftp.rename(from, to).await.map_err(|e| AppError::new("errSftpRename").detail(e))
+    sftp.rename(from, to)
+        .await
+        .map_err(|e| AppError::new("errSftpRename").detail(e))
 }
 
 /// Close an SFTP session and drop its SSH connection.
 #[tauri::command]
 pub async fn sftp_disconnect(state: State<'_, SftpManager>, id: String) -> Result<(), AppError> {
-    let conn = state.sessions.lock().map_err(|e| AppError::new("errUnknown").detail(e))?.remove(&id);
+    let conn = state
+        .sessions
+        .lock()
+        .map_err(|e| AppError::new("errUnknown").detail(e))?
+        .remove(&id);
     if let Some(conn) = conn {
         let _ = conn.sftp.close().await;
     }

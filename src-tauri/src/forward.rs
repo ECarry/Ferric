@@ -74,10 +74,15 @@ pub async fn ssh_forward_start(
                 .detail(e)
         })?;
 
-    let local_port = listener.local_addr().map(|a| a.port()).unwrap_or(config.local_port);
+    let local_port = listener
+        .local_addr()
+        .map(|a| a.port())
+        .unwrap_or(config.local_port);
 
     // Establish the SSH connection that will carry the tunnels.
-    let session = connect_and_auth(&config.config).await.map_err(AppError::from)?;
+    let session = connect_and_auth(&config.config)
+        .await
+        .map_err(AppError::from)?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
@@ -88,7 +93,14 @@ pub async fn ssh_forward_start(
     let remote_port = config.remote_port;
 
     tauri::async_runtime::spawn(async move {
-        emit_event(&app_handle, &tunnel_id, "started", Some(format!("Listening on 127.0.0.1:{local_port} -> {remote_host}:{remote_port}")));
+        emit_event(
+            &app_handle,
+            &tunnel_id,
+            "started",
+            Some(format!(
+                "Listening on 127.0.0.1:{local_port} -> {remote_host}:{remote_port}"
+            )),
+        );
 
         let session = Arc::new(session);
         let mut cancel = cancel_rx;
@@ -123,7 +135,9 @@ pub async fn ssh_forward_start(
         // Cleanup: disconnect the SSH session.
         let _ = Arc::try_unwrap(session).map(|s| {
             tauri::async_runtime::spawn(async move {
-                let _ = s.disconnect(russh::Disconnect::ByApplication, "", "English").await;
+                let _ = s
+                    .disconnect(russh::Disconnect::ByApplication, "", "English")
+                    .await;
             });
         });
         emit_event(&app_handle, &tunnel_id, "stopped", None);
@@ -140,10 +154,7 @@ pub async fn ssh_forward_start(
 
 /// Stop a running port-forward tunnel by its id.
 #[tauri::command]
-pub fn ssh_forward_stop(
-    state: State<'_, ForwardManager>,
-    id: String,
-) -> Result<(), AppError> {
+pub fn ssh_forward_stop(state: State<'_, ForwardManager>, id: String) -> Result<(), AppError> {
     let mut tunnels = state
         .tunnels
         .lock()
@@ -156,9 +167,7 @@ pub fn ssh_forward_stop(
 
 /// Stop all tunnels (called on disconnect).
 #[tauri::command]
-pub fn ssh_forward_stop_all(
-    state: State<'_, ForwardManager>,
-) -> Result<(), AppError> {
+pub fn ssh_forward_stop_all(state: State<'_, ForwardManager>) -> Result<(), AppError> {
     let mut tunnels = state
         .tunnels
         .lock()
@@ -171,9 +180,7 @@ pub fn ssh_forward_stop_all(
 
 /// List active tunnel ids.
 #[tauri::command]
-pub fn ssh_forward_list(
-    state: State<'_, ForwardManager>,
-) -> Result<Vec<String>, AppError> {
+pub fn ssh_forward_list(state: State<'_, ForwardManager>) -> Result<Vec<String>, AppError> {
     let tunnels = state
         .tunnels
         .lock()
@@ -190,7 +197,12 @@ async fn handle_connection(
     remote_port: u16,
 ) -> anyhow::Result<()> {
     let mut channel = session
-        .channel_open_direct_tcpip(&remote_host, remote_port as u32, peer.ip().to_string(), peer.port() as u32)
+        .channel_open_direct_tcpip(
+            &remote_host,
+            remote_port as u32,
+            peer.ip().to_string(),
+            peer.port() as u32,
+        )
         .await?;
 
     let mut tcp_buf = vec![0u8; 32 * 1024];

@@ -95,7 +95,9 @@ async fn exec_on_session(
                 }
                 stderr.extend_from_slice(&data);
             }
-            ChannelMsg::ExitStatus { exit_status: status } => exit_status = Some(status),
+            ChannelMsg::ExitStatus {
+                exit_status: status,
+            } => exit_status = Some(status),
             _ => {}
         }
     }
@@ -342,10 +344,7 @@ fn parse_stats_output(output: &str) -> PerformanceSnapshot {
             }
             "DISK" if cols.len() >= 6 => {
                 let mount = cols[2].trim();
-                if !mount.is_empty()
-                    && mount != "-"
-                    && seen_mounts.insert(mount.to_string())
-                {
+                if !mount.is_empty() && mount != "-" && seen_mounts.insert(mount.to_string()) {
                     let percent = cols[3].parse().unwrap_or(0.0);
                     let total_kb = cols[4].parse().unwrap_or(0);
                     let available_kb = cols[5].parse().unwrap_or(0);
@@ -388,7 +387,9 @@ fn parse_stats_output(output: &str) -> PerformanceSnapshot {
 }
 
 #[tauri::command]
-pub async fn get_performance_snapshot(config: ConnectConfig) -> Result<PerformanceSnapshot, AppError> {
+pub async fn get_performance_snapshot(
+    config: ConnectConfig,
+) -> Result<PerformanceSnapshot, AppError> {
     let raw = exec_remote_cmd(&config, SNAPSHOT_SCRIPT).await?;
     Ok(parse_stats_output(&raw))
 }

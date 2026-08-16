@@ -51,7 +51,9 @@ async fn exec_remote(config: &ConnectConfig, command: &str) -> Result<String, Ap
                     }
                     stderr.extend_from_slice(&data);
                 }
-                ChannelMsg::ExitStatus { exit_status: status } => exit_status = Some(status),
+                ChannelMsg::ExitStatus {
+                    exit_status: status,
+                } => exit_status = Some(status),
                 _ => {}
             }
         }
