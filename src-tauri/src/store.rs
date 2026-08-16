@@ -130,6 +130,17 @@ fn delete_secret(account: &str) {
     }
 }
 
+fn restore_secrets(snapshots: &[(String, Option<String>)]) {
+    for (account, value) in snapshots {
+        match value {
+            Some(secret) => {
+                let _ = write_secret(account, secret);
+            }
+            None => delete_secret(account),
+        }
+    }
+}
+
 /// Load the persisted config, hydrating passwords from the keychain.
 #[tauri::command]
 pub fn load_config(app: AppHandle) -> Result<Config, AppError> {
@@ -174,19 +185,35 @@ pub fn load_config(app: AppHandle) -> Result<Config, AppError> {
 pub fn save_config(app: AppHandle, config: Config) -> Result<(), AppError> {
     let path = config_path(&app)?;
     let mut to_write = config.clone();
+    let mut snapshots = Vec::with_capacity(to_write.servers.len() * 2);
+    for server in &to_write.servers {
+        snapshots.push((server.id.clone(), read_secret(&server.id)));
+        snapshots.push((
+            passphrase_account(&server.id),
+            read_secret(&passphrase_account(&server.id)),
+        ));
+    }
 
     for server in to_write.servers.iter_mut() {
         if server.auth_type == "password" {
             match server.password.take() {
-                Some(pw) if !pw.is_empty() => write_secret(&server.id, &pw)?,
-                // Empty/absent password on save leaves any existing keychain entry
-                // untouched so editing other fields doesn't wipe the secret.
+                Some(pw) if !pw.is_empty() => {
+                    if let Err(error) = write_secret(&server.id, &pw) {
+                        restore_secrets(&snapshots);
+                        return Err(error);
+                    }
+                }
                 _ => {}
             }
             delete_secret(&passphrase_account(&server.id));
         } else if server.auth_type == "key" {
             match server.key_passphrase.take() {
-                Some(pp) if !pp.is_empty() => write_secret(&passphrase_account(&server.id), &pp)?,
+                Some(pp) if !pp.is_empty() => {
+                    if let Err(error) = write_secret(&passphrase_account(&server.id), &pp) {
+                        restore_secrets(&snapshots);
+                        return Err(error);
+                    }
+                }
                 _ => {}
             }
             delete_secret(&server.id);
@@ -196,20 +223,33 @@ pub fn save_config(app: AppHandle, config: Config) -> Result<(), AppError> {
         }
     }
 
-    let json = serde_json::to_vec_pretty(&to_write)
-        .map_err(|e| AppError::new("errConfigSerialize").detail(e))?;
+    let json = match serde_json::to_vec_pretty(&to_write) {
+        Ok(json) => json,
+        Err(error) => {
+            restore_secrets(&snapshots);
+            return Err(AppError::new("errConfigSerialize").detail(error));
+        }
+    };
     let temp_path = path.with_extension("json.tmp");
     let backup_path = path.with_extension("json.bak");
 
-    fs::write(&temp_path, json).map_err(|e| AppError::new("errConfigWrite").detail(e))?;
+    if let Err(error) = fs::write(&temp_path, json) {
+        restore_secrets(&snapshots);
+        return Err(AppError::new("errConfigWrite").detail(error));
+    }
     if path.exists() {
         let _ = fs::remove_file(&backup_path);
-        fs::rename(&path, &backup_path).map_err(|e| AppError::new("errConfigWrite").detail(e))?;
+        if let Err(error) = fs::rename(&path, &backup_path) {
+            let _ = fs::remove_file(&temp_path);
+            restore_secrets(&snapshots);
+            return Err(AppError::new("errConfigWrite").detail(error));
+        }
     }
     if let Err(error) = fs::rename(&temp_path, &path) {
         if backup_path.exists() && !path.exists() {
             let _ = fs::rename(&backup_path, &path);
         }
+        restore_secrets(&snapshots);
         return Err(AppError::new("errConfigWrite").detail(error));
     }
     Ok(())
