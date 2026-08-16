@@ -121,12 +121,21 @@ export function TerminalWorkspace({ initialSessionId, sshConfig, sftpReady, file
     if (!target || !target.closable) return
     void sshDisconnect(target.sessionId)
     extraSessionsRef.current = extraSessionsRef.current.filter((id) => id !== target.sessionId)
-    setPaneIds((current) => current.filter((id) => id !== windowId))
-    setWindows((current) => {
-      const remaining = current.filter((item) => item.id !== windowId)
-      if (activeWindowId === windowId) setActiveWindowId(remaining[remaining.length - 1]?.id ?? null)
-      return remaining
-    })
+
+    const remaining = windows.filter((item) => item.id !== windowId)
+    const visibleRemaining = paneIds.filter((id) => id !== windowId && remaining.some((item) => item.id === id))
+    const nextActiveWindowId = activeWindowId === windowId
+      ? visibleRemaining[visibleRemaining.length - 1] ?? remaining[remaining.length - 1]?.id
+      : activeWindowId
+    const nextPaneIds = visibleRemaining.length > 0
+      ? visibleRemaining
+      : nextActiveWindowId
+        ? [nextActiveWindowId]
+        : []
+
+    setPaneIds(nextPaneIds)
+    setWindows(remaining)
+    if (nextActiveWindowId) setActiveWindowId(nextActiveWindowId)
   }
 
   const selectWindow = (windowId: string) => {
